@@ -8,7 +8,8 @@ Our implementation is built on the source code from [seq2seq-keyphrase-pytorch](
 ## Dataset
 For a new dataset, you should create a new directory and place it in the `./data` directory.
 The directory should contains three pairs of source-target files, `train_src.txt, train_trg.txt, valid_src.txt, valid_trg.txt, test_src.txt`.
-The `./data` directory contains the `kp20k` dataset, Thanks to Mr. Wang Chen for his help on data preprocessing. The `kp20k_small` dataset is only used for debugging.
+The `./data` directory contains the `kp20k_small` folder, it only contains a small dataset for debugging.
+For the full kp20k dataset, please download from here [here](https://www.dropbox.com/s/b5zudclq0pfjdor/kp20k.zip?dl=0). Thanks to Mr. Wang Chen for his help on data preprocessing.
 
 ### Formats
 * All the text should be tokenized and all the tokens should be separated by a space character.
