@@ -32,12 +32,13 @@ class Seq2SeqModel(nn.Module):
         self.coverage_attn = opt.coverage_attn
         self.copy_attn = opt.copy_attention
 
-        self.pad_token_src = opt.word2idx[pykp.io.PAD_WORD]
-        self.pad_token_trg = opt.word2idx[pykp.io.PAD_WORD]
-        self.bos_token = opt.word2idx[pykp.io.BOS_WORD]
+        self.pad_idx_src = opt.word2idx[pykp.io.PAD_WORD]
+        self.pad_idx_trg = opt.word2idx[pykp.io.PAD_WORD]
+        self.bos_idx = opt.word2idx[pykp.io.BOS_WORD]
         self.eos_token = opt.word2idx[pykp.io.EOS_WORD]
-        self.unk_word = opt.word2idx[pykp.io.UNK_WORD]
+        self.unk_idx = opt.word2idx[pykp.io.UNK_WORD]
 
+        self.share_embeddings = opt.share_embeddings
 
         '''
         self.attention_mode = opt.attention_mode    # 'dot', 'general', 'concat'
@@ -67,31 +68,34 @@ class Seq2SeqModel(nn.Module):
         else:
             logging.info("Training with Teacher Forcing with static rate=%f" % self.teacher_forcing_ratio)
 
-        self.get_mask = GetMask(self.pad_token_src)
+        self.get_mask = GetMask(self.pad_idx_src)
         '''
-
+        '''
         self.embedding = nn.Embedding(
             self.vocab_size,
             self.emb_dim,
-            self.pad_token_src
+            self.pad_idx_src
         )
-
+        '''
         self.encoder = RNNEncoder(
-            input_size=self.emb_dim,
+            vocab_size=self.vocab_size,
+            embed_size=self.emb_dim,
             hidden_size=self.encoder_size,
             num_layers=self.enc_layers,
             bidirectional=self.bidirectional,
+            pad_token=self.pad_idx_src,
             dropout=self.dropout
         )
 
         self.decoder = RNNDecoder(
-            input_size=self.emb_dim + self.num_directions * self.encoder_size,
+            vocab_size=self.vocab_size,
+            embed_size=self.emb_dim,
             hidden_size=self.decoder_size,
             num_layers=self.dec_layers,
             memory_bank_size=self.num_directions * self.encoder_size,
-            vocab_size=self.vocab_size,
             coverage_attn=self.coverage_attn,
             copy_attn=self.copy_attn,
+            pad_idx=self.pad_idx_trg,
             dropout=self.dropout
         )
 
@@ -105,12 +109,18 @@ class Seq2SeqModel(nn.Module):
         if self.bridge == 'copy':
             assert self.encoder_size * self.num_directions == self.decoder_size, 'encoder hidden size and decoder hidden size are not match, please use a bridge layer'
 
+        if self.share_embeddings:
+            self.encoder.embedding.weight = self.decoder.embedding.weight
+
         self.init_weights()
 
     def init_weights(self):
         """Initialize weights."""
         initrange = 0.1
-        self.embedding.weight.data.uniform_(-initrange, initrange)
+        self.encoder.embedding.weight.data.uniform_(-initrange, initrange)
+        if not self.share_embeddings:
+            self.decoder.embedding.weight.data.uniform_(-initrange, initrange)
+
         # TODO: model parameter init
         # fill with fixed numbers for debugging
         # self.embedding.weight.data.fill_(0.01)
@@ -137,12 +147,13 @@ class Seq2SeqModel(nn.Module):
         assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
         assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
         '''
-        memory_bank, encoder_final_state = self.encode(self, src, src_lens)
+        memory_bank, encoder_final_state = self.encoder(src, src_lens)
+        assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
+        assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
 
         # Decoding
         h_t = self.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
         max_target_length = trg.size(1)
-        trg_emb = self.embedding(trg)  # [batch, max_trg_seq, embed_size]
         context = self.init_context(memory_bank)  # [batch, memory_bank_size]
 
         decoder_dist_all = []
@@ -157,22 +168,22 @@ class Seq2SeqModel(nn.Module):
             coverage_all = None
 
         # init y_t to be BOS token
-        y_t = trg.new_ones(batch_size) * self.bos_token  # [batch_size]
-        y_t_emb = self.embedding(y_t).unsqueeze(0)  # [1, batch_size, embed_size]
+        y_t = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
 
-        print(y_t[:5])
+        #print(y_t[:5])
 
         for t in range(max_target_length):
             decoder_dist, h_t, context, attn_dist, p_gen, coverage = \
-                self.decoder(y_t_emb, h_t, memory_bank, src_mask, context, max_num_oov, src_oov, coverage)
+                self.decoder(y_t, h_t, memory_bank, src_mask, context, max_num_oov, src_oov, coverage)
             decoder_dist_all.append(decoder_dist.unsqueeze(1))  # [batch, 1, vocab_size]
             attention_dist_all.append(attn_dist.unsqueeze(1))  # [batch, 1, src_seq_len]
             if self.coverage_attn:
                 coverage_all.append(coverage.unsqueeze(1))  # [batch, 1, src_seq_len]
-            y_t_emb = trg_emb[:, t, :].unsqueeze(0)  # [1, batch, embed_size]
+            y_t = trg[:, t]
+            #y_t_emb = trg_emb[:, t, :].unsqueeze(0)  # [1, batch, embed_size]
 
-            print(t)
-        print(trg_emb.size(1))
+            #print(t)
+        #print(trg_emb.size(1))
 
         decoder_dist_all = torch.cat(decoder_dist_all, dim=1)  # [batch_size, trg_len, vocab_size]
         attention_dist_all = torch.cat(attention_dist_all, dim=1)  # [batch_size, trg_len, src_len]
@@ -186,16 +197,6 @@ class Seq2SeqModel(nn.Module):
         assert coverage_all.size() == torch.Size((batch_size, max_target_length, max_src_len))
 
         return decoder_dist_all, h_t, attention_dist_all, coverage_all
-
-    def encode(self, src, src_lens):
-        batch_size, max_src_len = list(src.size())
-
-        src_emb = self.embedding(src)
-        memory_bank, encoder_final_state = self.encoder(src_emb, src_lens)
-        assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
-        assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
-
-        return memory_bank, encoder_final_state
 
     def init_decoder_state(self, encoder_final_state):
         """

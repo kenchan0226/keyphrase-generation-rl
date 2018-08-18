@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import argparse
 import config
 import logging
@@ -12,8 +11,12 @@ from pykp.model import Seq2SeqModel
 from torch.optim import Adam
 import pykp
 from beam_search import SequenceGenerator
+from evaluate import evaluate_loss
 import train_ml
-import numpy as np
+from utils.statistics import Statistics
+from utils.visualization import plot_train_valid_curve
+
+EPS = 1e-8
 
 def process_opt(opt):
     if opt.seed > 0:
@@ -38,6 +41,7 @@ def process_opt(opt):
         opt.exp += '.bi-directional'
     else:
         opt.exp += '.uni-directional'
+
 
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
@@ -174,36 +178,29 @@ def load_data_vocab(opt, load_train=True):
     return train_loader, valid_loader, word2idx, idx2word, vocab
 
 def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, opt):
+    '''
     generator = SequenceGenerator(model,
-                                  eos_id=opt.word2idx[pykp.io.EOS_WORD],
+                                  eos_idx=opt.word2idx[pykp.io.EOS_WORD],
                                   beam_size=opt.beam_size,
                                   max_sequence_length=opt.max_sent_length
                                   )
     '''
-    if torch.cuda.is_available():
-        if isinstance(opt.gpuid, int):
-            opt.gpuid = [opt.gpuid]
-        logging.info('Running on GPU! devices=%s' % str(opt.gpuid))
-        # model = nn.DataParallel(model, device_ids=opt.gpuid)
-    else:
-        logging.info('Running on CPU!')
-    '''
-
     logging.info('======================  Start Training  =========================')
 
     checkpoint_names = []
-    train_ml_history_losses = []
-    train_rl_history_losses = []
-    valid_history_losses = []
-    test_history_losses = []
     # best_loss = sys.float_info.max # for normal training/testing loss (likelihood)
-    best_loss = 0.0  # for f-score
+    best_loss = 0.0
     stop_increasing = 0
+    total_train_statistics = Statistics()
+    report_train_statistics = Statistics()
+    report_train_ppl = []
+    report_valid_ppl = []
 
-    train_ml_losses = []
-    train_rl_losses = []
     total_batch = -1
     early_stop_flag = False
+
+    best_valid_loss = float('inf')
+    num_stop_dropping = 0
 
     '''
     if opt.train_rl:
@@ -212,6 +209,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
     if opt.train_from:  # opt.train_from:
         #TODO: load the training state
+        raise ValueError("Not implemented the function of load from trained model")
         pass
 
     for epoch in range(opt.start_epoch, opt.epochs):
@@ -228,12 +226,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             # Training
             if opt.train_ml:
-                loss_ml, decoder_log_probs = train_ml.train_one_batch(batch, model, optimizer_ml, opt)
-
-                loss_ml = loss_ml.cpu().data.numpy()
-                train_ml_losses.append(loss_ml)
-                report_loss.append(('train_ml_loss', loss_ml))
-                report_loss.append(('PPL', loss_ml))
+                batch_loss_stat, decoder_dist = train_ml.train_one_batch(batch, model, optimizer_ml, opt)
+                report_train_statistics.update(batch_loss_stat)
+                total_train_statistics.update(batch_loss_stat)
+                #report_loss.append(('train_ml_loss', loss_ml))
+                #report_loss.append(('PPL', loss_ml))
 
                 # Brief report
                 '''
@@ -254,8 +251,43 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             #progbar.update(epoch, batch_i, report_loss)
 
-            # Validate and save checkpoint
+            # Checkpoint, decay the learning rate if validation loss stop dropping, apply early stopping if stop decreasing for several epochs.
+            if opt.train_ml:
+                if (opt.run_valid_every == -1 and batch_i == len(train_data_loader) - 1) or \
+                        (opt.run_valid_every > -1 and total_batch > 1 and total_batch % opt.run_valid_every == 0):
+                    # test the model on the validation dataset for one epoch
+                    eval_loss_stat = evaluate_loss(valid_data_loader, model, opt)
+                    current_eval_loss = eval_loss_stat.xent()
 
+                    if current_eval_loss < best_valid_loss:
+                        best_valid_loss = current_eval_loss
+                        num_stop_dropping = 0
+                    else:
+                        num_stop_dropping += 1
+                        # decay the learning rate by a factor
+                        for i, param_group in enumerate(optimizer_ml.param_groups):
+                            old_lr = float(param_group['lr'])
+                            new_lr = old_lr * opt.learning_rate_decay
+                            if old_lr - new_lr > EPS:
+                                param_group['lr'] = new_lr
+
+                    current_train_ppl = report_train_statistics.ppl()
+                    current_eval_ppl = eval_loss_stat.ppl()
+                    logging.info('Average training perplexity: %.3f; Average validation perplexity: %.3f; over %d iterations' % (current_train_ppl, current_eval_loss, opt.run_valid_every))
+
+                    report_train_ppl.append(current_train_ppl)
+                    report_valid_ppl.append(current_eval_ppl)
+
+                    if num_stop_dropping >= opt.early_stop_tolerance:
+                        logging.info('Have not increased for %d epochs, early stop training' % num_stop_dropping)
+                        early_stop_flag = True
+                        break
+
+                    report_train_statistics.reset()
+
+    train_valid_curve_path = opt.exp_path + '/train_valid_ppl.pdf'
+    plot_train_valid_curve(report_train_ppl, report_valid_ppl, opt.run_valid_every, train_valid_curve_path)
+    logging.info('Overall average training loss: %.3f, ppl: %.3f' % (total_train_statistics.xent(), total_train_statistics.ppl()))
 
 def main(opt):
     try:

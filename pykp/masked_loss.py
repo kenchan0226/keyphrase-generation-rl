@@ -1,13 +1,12 @@
 import torch
 
 
-def masked_cross_entropy(class_dist, target, trg_mask, divided_by_seq_len=False, trg_lens=None,
+def masked_cross_entropy(class_dist, target, trg_mask, trg_lens=None,
                          coverage_attn=False, coverage=None, attn_dist=None, lambda_coverage=0):
     """
     :param class_dist: [batch_size, trg_seq_len, num_classes]
     :param target: [batch_size, trg_seq_len]
     :param trg_mask: [batch_size, trg_seq_len]
-    :param divided_by_seq_len: boolean, whether to divide the loss by the max target sequence length
     :param trg_lens: a list with len of batch_size
     :param coverage_attn: boolean, whether to include coverage loss
     :param coverage: [batch_size, trg_seq_len, src_seq_len]
@@ -26,12 +25,15 @@ def masked_cross_entropy(class_dist, target, trg_mask, divided_by_seq_len=False,
         losses = losses + lambda_coverage * coverage_losses
     if trg_mask is not None:
         losses = losses * trg_mask
+    '''
     if divided_by_seq_len:
         trg_lens_tensor = torch.FloatTensor(trg_lens).to(target.device).requires_grad_()
         loss = losses.sum(dim=1)   # [batch_size]
         loss = loss / trg_lens_tensor
     else:
         loss = losses.sum(dim=1) # [batch_size]
+    '''
+    loss = losses.sum(dim=1)  # [batch_size]
     return loss.sum()
 
 def compute_coverage_losses(coverage, attn_dist):

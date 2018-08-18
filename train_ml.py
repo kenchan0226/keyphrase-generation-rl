@@ -1,8 +1,6 @@
-import torch
 import torch.nn as nn
-import logging
-import time
-from pykp.masked_loss import masked_cross_entropy, masked_coverage_loss
+from pykp.masked_loss import masked_cross_entropy
+from utils.statistics import Statistics
 
 def train_one_batch(one2one_batch, model, optimizer, opt):
 
@@ -16,11 +14,12 @@ def train_one_batch(one2one_batch, model, optimizer, opt):
     trg_mask: a FloatTensor, [batch, trg_seq_len]
     src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
     trg_oov: a LongTensor containing the word indices of target sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
+    :return:
     """
 
     max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
 
-    # move data to GPU if available, and set require gradient to true.
+    # move data to GPU if available
     src = src.to(opt.device)
     src_mask = src_mask.to(opt.device)
     trg = trg.to(opt.device)
@@ -28,33 +27,39 @@ def train_one_batch(one2one_batch, model, optimizer, opt):
     src_oov = src_oov.to(opt.device)
     trg_oov = trg_oov.to(opt.device)
 
+    model.train()
+
     optimizer.zero_grad()
 
     decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
 
-    # simply average losses of all the predictions
-    # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
-
     #start_time = time.time()
 
     if opt.copy_attention:  # Compute the loss using target with oov words
-        loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, opt.per_token_xe_loss, trg_lens,
+        loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
                          opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
     else:  # Compute the loss using target without oov words
-        loss = masked_cross_entropy(decoder_dist, trg, trg_mask, opt.per_token_xe_loss, trg_lens,
+        loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
                                     opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
 
-    #print("--loss calculation- %s seconds ---" % (time.time() - start_time))
+    total_trg_tokens = sum(trg_lens)
 
-    #start_time = time.time()
-    loss.backward()
-    #print("--backward- %s seconds ---" % (time.time() - start_time))
+    if opt.loss_normalization == "tokens": # use number of target tokens to normalize the loss
+        normalization = total_trg_tokens
+    else: # use batch_size to normalize the loss
+        normalization = src.size(0)
+
+    # back propagation on the normalized loss
+    loss.div(normalization).backward()
 
     if opt.max_grad_norm > 0:
-        grad_norm_before_clipping = nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+        grad_norm_before_clipping = nn.utils.clip_grad_norm_(model.parameters(), opt.max_grad_norm)
         # grad_norm_after_clipping = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
         # logging.info('clip grad (%f -> %f)' % (grad_norm_before_clipping, grad_norm_after_clipping))
 
     optimizer.step()
 
-    return loss.data, decoder_dist
+    # construct a statistic object for the loss
+    stat = Statistics(loss.item(), total_trg_tokens)
+
+    return stat, decoder_dist.detach()

@@ -6,9 +6,11 @@ import numpy as np
 from pykp.masked_softmax import MaskedSoftmax
 
 class RNNDecoder(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, memory_bank_size, vocab_size, coverage_attn, copy_attn, dropout=0.0):
+    def __init__(self, vocab_size, embed_size, hidden_size, num_layers, memory_bank_size, coverage_attn, copy_attn, pad_idx, dropout=0.0):
         super(RNNDecoder, self).__init__()
-        self.input_size = input_size # embed_size + memory_bank_size
+        #self.input_size = input_size
+        self.input_size = embed_size + memory_bank_size
+        self.embed_size = embed_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.vocab_size = vocab_size
@@ -16,7 +18,13 @@ class RNNDecoder(nn.Module):
         self.dropout = dropout
         self.coverage_attn = coverage_attn
         self.copy_attn = copy_attn
-        self.rnn = nn.GRU(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers,
+        self.pad_token = pad_idx
+        self.embedding = nn.Embedding(
+            self.vocab_size,
+            self.embed_size,
+            self.pad_token
+        )
+        self.rnn = nn.GRU(input_size=self.input_size, hidden_size=hidden_size, num_layers=num_layers,
                           bidirectional=False, batch_first=False, dropout=dropout)
         self.attention_layer = Attention(
             decoder_size=hidden_size,
@@ -24,7 +32,7 @@ class RNNDecoder(nn.Module):
             coverage_attn=coverage_attn
         )
         #self.p_gen_network = nn.Sequential(nn.Linear(input_size + hidden_size, 1), nn.Sigmoid())
-        self.p_gen_linear = nn.Linear(input_size + hidden_size, 1)
+        self.p_gen_linear = nn.Linear(self.input_size + hidden_size, 1)
         self.sigmoid = nn.Sigmoid()
         #self.p_gen_linear = nn.Linear(input_size + hidden_size, 1)
         #self.sigmoid = nn.Sigmoid()
@@ -33,9 +41,9 @@ class RNNDecoder(nn.Module):
         self.vocab_dist_linear_2 = nn.Linear(hidden_size, vocab_size)
         self.softmax = MaskedSoftmax(dim=1)
 
-    def forward(self, y_emb, h, memory_bank, src_mask, context, max_num_oovs, src_oov, coverage):
+    def forward(self, y, h, memory_bank, src_mask, context, max_num_oovs, src_oov, coverage):
         """
-        :param y_emb: [1, batch_size, embed_size]
+        :param y: [batch_size]
         :param h: [1, batch_size, decoder_size]
         :param memory_bank: [batch_size, max_src_seq_Len, memory_bank_size]
         :param src_mask: [batch_size, max_src_seq_len]
@@ -46,6 +54,11 @@ class RNNDecoder(nn.Module):
         :return:
         """
         batch_size, max_src_seq_len = list(src_oov.size())
+        assert y.size() == torch.Size([batch_size])
+        assert h.size() == torch.Size([1, batch_size, self.hidden_size])
+
+        # init input embedding
+        y_emb = self.embedding(y).unsqueeze(0)  # [1, batch_size, embed_size]
         # pass the concatenation of the input embedding and context vector to the RNN
         # insert one dimension to the context tensor
         rnn_input = torch.cat((y_emb, context.unsqueeze(0)), 2)  # [1, batch_size, embed_size + num_directions * encoder_size]
@@ -97,15 +110,17 @@ if __name__ == '__main__':
     num_layers = 1
     memory_bank_size = 50
     input_size = embed_size + memory_bank_size
-    vocab_size = 5000
+    vocab_size = 20
     coverage_attn = True
     copy_attn = True
-    dropout = 0.3
-    decoder = RNNDecoder(input_size, decoder_size, num_layers, memory_bank_size, vocab_size, coverage_attn, copy_attn, dropout)
+    dropout = 0.0
+    pad_idx = 0
+    decoder = RNNDecoder(vocab_size, embed_size, decoder_size, num_layers, memory_bank_size, coverage_attn, copy_attn, pad_idx, dropout)
     batch_size = 5
     max_src_seq_len = 7
 
-    y_emb = torch.randn((1, batch_size, embed_size))
+    #y_emb = torch.randn((1, batch_size, embed_size))
+    y = torch.LongTensor(np.random.randint(1, 20, batch_size))
     h = torch.randn((num_layers, batch_size, decoder_size))
     memory_bank = torch.randn((batch_size, max_src_seq_len, memory_bank_size))
     context = torch.randn((batch_size, memory_bank_size))
@@ -134,4 +149,6 @@ if __name__ == '__main__':
     src_mask = torch.ne(input_seq, 0)
     src_mask = src_mask.type(torch.FloatTensor)
     max_num_oovs = 3
-    final_dist, h_next, context, attn_dist, p_gen, coverage = decoder(y_emb, h, memory_bank, src_mask, context, max_num_oovs, input_seq_oov, coverage)
+    final_dist, h_next, context, attn_dist, p_gen, coverage = decoder(y, h, memory_bank, src_mask, context, max_num_oovs, input_seq_oov, coverage)
+    print("Pass")
+
