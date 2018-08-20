@@ -105,7 +105,8 @@ class RNNDecoder(nn.Module):
         assert h_next.size() == torch.Size([1, batch_size, self.hidden_size])
         assert context.size() == torch.Size([batch_size, self.memory_bank_size])
         assert attn_dist.size() == torch.Size([batch_size, max_src_seq_len])
-        assert coverage.size() == torch.Size([batch_size, max_src_seq_len])
+        if self.coverage_attn:
+            assert coverage.size() == torch.Size([batch_size, max_src_seq_len])
 
         return final_dist, h_next, context, attn_dist, p_gen, coverage
 

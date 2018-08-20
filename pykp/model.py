@@ -187,14 +187,15 @@ class Seq2SeqModel(nn.Module):
 
         decoder_dist_all = torch.cat(decoder_dist_all, dim=1)  # [batch_size, trg_len, vocab_size]
         attention_dist_all = torch.cat(attention_dist_all, dim=1)  # [batch_size, trg_len, src_len]
-        coverage_all = torch.cat(coverage_all, dim=1)  # [batch_size, trg_len, src_len]
+        if self.coverage_attn:
+            coverage_all = torch.cat(coverage_all, dim=1)  # [batch_size, trg_len, src_len]
+            assert coverage_all.size() == torch.Size((batch_size, max_target_length, max_src_len))
 
         if self.copy_attn:
             assert decoder_dist_all.size() == torch.Size((batch_size, max_target_length, self.vocab_size + max_num_oov))
         else:
             assert decoder_dist_all.size() == torch.Size((batch_size, max_target_length, self.vocab_size))
         assert attention_dist_all.size() == torch.Size((batch_size, max_target_length, max_src_len))
-        assert coverage_all.size() == torch.Size((batch_size, max_target_length, max_src_len))
 
         return decoder_dist_all, h_t, attention_dist_all, coverage_all
 
