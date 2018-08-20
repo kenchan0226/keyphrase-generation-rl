@@ -12,38 +12,19 @@ from collections import Counter
 from collections import defaultdict
 import numpy as np
 import sys
-from torch.autograd import Variable
-
-import torch.multiprocessing as multiprocessing
-import queue
-import threading
-
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
-import torchtext
+#import torchtext
 import torch
+import torch.utils.data
 
 PAD_WORD = '<pad>'
 UNK_WORD = '<unk>'
 BOS_WORD = '<bos>'
 EOS_WORD = '<eos>'
 DIGIT = '<digit>'
-
-
-def __getstate__(self):
-    return dict(self.__dict__, stoi=dict(self.stoi))
-
-
-def __setstate__(self, state):
-    self.__dict__.update(state)
-    self.stoi = defaultdict(lambda: 0, self.stoi)
-
-
-torchtext.vocab.Vocab.__getstate__ = __getstate__
-torchtext.vocab.Vocab.__setstate__ = __setstate__
-
 
 class KeyphraseDataset(torch.utils.data.Dataset):
     def __init__(self, examples, word2idx, idx2word, type='one2many', include_original=False):
@@ -204,7 +185,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         else:
             return (src_o2m, src_o2m_len, trg_o2m, None, trg_copy_target_o2m, src_oov_o2m, oov_lists_o2m), (src_o2o, src_o2o_len, trg_o2o, trg_target_o2o, trg_copy_target_o2o, src_oov_o2o, oov_lists_o2o)
 
-
+'''
 class KeyphraseDatasetTorchText(torchtext.data.Dataset):
     @staticmethod
     def sort_key(ex):
@@ -226,7 +207,7 @@ class KeyphraseDatasetTorchText(torchtext.data.Dataset):
                 [src_tokens, trg_tokens], fields))
 
         super(KeyphraseDatasetTorchText, self).__init__(examples, fields, **kwargs)
-
+'''
 
 def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';'):
     '''
@@ -554,7 +535,7 @@ def copy_martix(source, target):
                 cc[i][j] = 1.
     return cc
 
-
+'''
 def build_vocab(tokenized_src_trgs_pairs, opt):
     """Construct a vocabulary from tokenized lines."""
     vocab = {}
@@ -567,26 +548,26 @@ def build_vocab(tokenized_src_trgs_pairs, opt):
                 vocab[token] += 1
 
     # Discard start, end, pad and unk tokens if already present
-    if '<s>' in vocab:
-        del vocab['<s>']
+    if '<bos>' in vocab:
+        del vocab['<bos>']
     if '<pad>' in vocab:
         del vocab['<pad>']
-    if '</s>' in vocab:
-        del vocab['</s>']
+    if '<eos>' in vocab:
+        del vocab['<eos>']
     if '<unk>' in vocab:
         del vocab['<unk>']
 
     word2idx = {
         '<pad>': 0,
-        '<s>': 1,
-        '</s>': 2,
+        '<bos>': 1,
+        '<eos>': 2,
         '<unk>': 3,
     }
 
     idx2word = {
         0: '<pad>',
-        1: '<s>',
-        2: '</s>',
+        1: '<bos>',
+        2: '<eos>',
         3: '<unk>',
     }
 
@@ -605,102 +586,9 @@ def build_vocab(tokenized_src_trgs_pairs, opt):
         idx2word[ind + 4] = word
 
     return word2idx, idx2word, vocab
+'''
 
-
-class One2OneKPDatasetOpenNMT(torchtext.data.Dataset):
-    def __init__(self, src_trgs_pairs, fields,
-                 src_seq_length=0, trg_seq_length=0,
-                 src_seq_length_trunc=0, trg_seq_length_trunc=0,
-                 dynamic_dict=True, **kwargs):
-
-        self.src_vocabs = []
-        # examples: one for each src line or (src, trg) line pair.
-        # Each element is a dictionary whose keys represent at minimum
-        # the src tokens and their indices and potentially also the
-        # src and trg features and alignment information.
-        examples = []
-        indices = 0
-
-        for src, trgs in src_trgs_pairs:
-            if src_seq_length_trunc > 0 and len(src) > src_seq_length_trunc:
-                src = src[:src_seq_length_trunc]
-            for trg in trgs:
-                trg = re.sub('\(.*?\)', '', trg).strip()
-                if trg_seq_length_trunc > 0 and len(trg) > trg_seq_length_trunc:
-                    trg = trg[:trg_seq_length_trunc]
-                examples.append({'indices': indices, 'src': src, 'trg': trg})
-                indices += 1
-
-        if dynamic_dict:
-            examples = self.dynamic_dict(examples)
-
-        keys = fields.keys()
-        fields = [(k, fields[k]) for k in keys]
-        example_values = ([ex[k] for k in keys] for ex in examples)
-
-        # internally call the field.preprocess() and process each scr and trg
-        #       including lower(), tokenize() and preprocess()
-        out_examples = (torchtext.data.Example.fromlist(ex_values, fields)
-                        for ex_values in example_values)
-
-        def filter_pred(example):
-            return 0 < len(example.src) <= src_seq_length \
-                and 0 < len(example.trg) <= trg_seq_length
-
-        super(One2OneKPDatasetOpenNMT, self).__init__(
-            out_examples,
-            fields,
-            filter_pred
-        )
-
-    def dynamic_dict(self, examples):
-        for example in examples:
-            src = example["src"]
-            src_vocab = torchtext.vocab.Vocab(Counter(src))
-            self.src_vocabs.append(src_vocab)
-            # mapping source tokens to indices in the dynamic dict
-            src_map = torch.LongTensor([src_vocab.stoi[w] for w in src])
-            example["src_map"] = src_map
-
-            if "trg" in example:
-                trg = example["trg"]
-                mask = torch.LongTensor(
-                    [0] + [src_vocab.stoi[w] for w in trg] + [0])
-                example["alignment"] = mask
-            yield example
-
-    @staticmethod
-    def sort_key(ex):
-        "Sort in reverse size order"
-        return -len(ex.src)
-
-    def __getstate__(self):
-        return self.__dict__
-
-    def __setstate__(self, d):
-        self.__dict__.update(d)
-
-    def __reduce_ex__(self, proto):
-        "This is a hack. Something is broken with torch pickle."
-        return super(One2OneKPDatasetOpenNMT, self).__reduce_ex__()
-
-
-def merge_vocabs(vocabs, vocab_size=None):
-    """
-    Merge individual vocabularies (assumed to be generated from disjoint
-    documents) into a larger vocabulary.
-    Args:
-        vocabs: `torchtext.vocab.Vocab` vocabularies to be merged
-        vocab_size: `int` the final vocabulary size. `None` for no limit.
-    Return:
-        `torchtext.vocab.Vocab`
-    """
-    merged = sum([vocab.freqs for vocab in vocabs], Counter())
-    return torchtext.vocab.Vocab(merged,
-                                 specials=[PAD_WORD, BOS_WORD, EOS_WORD],
-                                 max_size=vocab_size)
-
-
+'''
 def save_vocab(fields):
     vocab = []
     for k, f in fields.items():
@@ -708,38 +596,4 @@ def save_vocab(fields):
             f.vocab.stoi = dict(f.vocab.stoi)
             vocab.append((k, f.vocab))
     return vocab
-
-
-def build_vocab_OpenNMT(train, opt):
-    """
-    train: a KPDataset
-    """
-    fields = train.fields
-    fields["src"].build_vocab(train, max_size=opt.vocab_size,
-                              min_freq=opt.words_min_frequency)
-    fields["trg"].build_vocab(train, max_size=opt.vocab_size,
-                              min_freq=opt.words_min_frequency)
-    merged_vocab = merge_vocabs(
-        [fields["src"].vocab, fields["trg"].vocab],
-        vocab_size=opt.vocab_size)
-    fields["src"].vocab = merged_vocab
-    fields["trg"].vocab = merged_vocab
-
-
-def initialize_fields(opt):
-    """
-    returns: A dictionary whose keys are strings and whose values are the
-            corresponding Field objects.
-    """
-    fields = {}
-    fields["src"] = torchtext.data.Field(
-        init_token=BOS_WORD, eos_token=EOS_WORD,
-        pad_token=PAD_WORD, lower=opt.lower,
-        tokenize=copyseq_tokenize)
-
-    fields["trg"] = torchtext.data.Field(
-        init_token=BOS_WORD, eos_token=EOS_WORD,
-        pad_token=PAD_WORD, lower=opt.lower,
-        tokenize=copyseq_tokenize)
-
-    return fields
+'''

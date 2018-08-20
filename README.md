@@ -45,7 +45,7 @@ Please read the config.py for more details about the options.
 
 ## TODO
 - [ ] Beam Search
-- [ ] Early Stopping of training
+- [x] Early Stopping of training
 - [ ] Evaluation
 - [ ] Training with RL
 

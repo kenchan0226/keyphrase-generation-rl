@@ -1,6 +1,8 @@
 import logging
 import torch
 import torch.nn as nn
+import math
+import logging
 
 class RNNEncoder(nn.Module):
     def __init__(self, vocab_size, embed_size, hidden_size, num_layers, bidirectional, pad_token, dropout=0.0):
@@ -26,6 +28,9 @@ class RNNEncoder(nn.Module):
         :param src_lens: a list containing the length of src sequences for each batch, with len=batch
         :return:
         """
+        # Debug
+        #if math.isnan(self.rnn.weight_hh_l0[0,0].item()):
+        #    logging.info('nan encoder parameter')
         src_embed = self.embedding(src) # [batch, src_len, embed_size]
         packed_input_src = nn.utils.rnn.pack_padded_sequence(src_embed, src_lens, batch_first=True)
         memory_bank, encoder_final_state = self.rnn(packed_input_src)

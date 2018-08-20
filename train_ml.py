@@ -1,6 +1,8 @@
 import torch.nn as nn
 from pykp.masked_loss import masked_cross_entropy
 from utils.statistics import Statistics
+from utils.time_log import time_since
+import time
 
 def train_one_batch(one2one_batch, model, optimizer, opt):
 
@@ -31,16 +33,18 @@ def train_one_batch(one2one_batch, model, optimizer, opt):
 
     optimizer.zero_grad()
 
+    start_time = time.time()
     decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
+    forward_time = time_since(start_time)
 
-    #start_time = time.time()
-
+    start_time = time.time()
     if opt.copy_attention:  # Compute the loss using target with oov words
         loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
                          opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
     else:  # Compute the loss using target without oov words
         loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
                                     opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
+    loss_compute_time = time_since(start_time)
 
     total_trg_tokens = sum(trg_lens)
 
@@ -49,8 +53,12 @@ def train_one_batch(one2one_batch, model, optimizer, opt):
     else: # use batch_size to normalize the loss
         normalization = src.size(0)
 
+    assert normalization > 0, 'normalization should be a positive number'
+
+    start_time = time.time()
     # back propagation on the normalized loss
     loss.div(normalization).backward()
+    backward_time = time_since(start_time)
 
     if opt.max_grad_norm > 0:
         grad_norm_before_clipping = nn.utils.clip_grad_norm_(model.parameters(), opt.max_grad_norm)
@@ -60,6 +68,6 @@ def train_one_batch(one2one_batch, model, optimizer, opt):
     optimizer.step()
 
     # construct a statistic object for the loss
-    stat = Statistics(loss.item(), total_trg_tokens)
+    stat = Statistics(loss.item(), total_trg_tokens, n_batch=1, forward_time=forward_time, loss_compute_time=loss_compute_time, backward_time=backward_time)
 
     return stat, decoder_dist.detach()

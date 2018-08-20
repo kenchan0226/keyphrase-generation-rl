@@ -264,19 +264,20 @@ def train_opts(parser):
                         choices=['noam'], help="Use a custom decay rate.")
     parser.add_argument('-warmup_steps', type=int, default=4000,
                         help="""Number of warmup steps for custom decay.""")
-
-    parser.add_argument('-run_valid_every', type=int, default=4000,
-                        help="Run validation test at this interval (every run_valid_every batches)")
+    parser.add_argument('-checkpoint_interval', type=int, default=4000,
+                        help='Run validation and save model parameters at this interval.')
+    #parser.add_argument('-run_valid_every', type=int, default=4000,
+    #                    help="Run validation test at this interval (every run_valid_every batches)")
     parser.add_argument('-early_stop_tolerance', type=int, default=4,
                         help="Stop training if it doesn't improve any more for several rounds of validation")
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
 
     parser.add_argument('-timemark', type=str, default=timemark,
-                        help="Save checkpoint at this interval.")
+                        help="The current time stamp.")
 
-    parser.add_argument('-save_model_every', type=int, default=2000,
-                        help="Save checkpoint at this interval.")
+    #parser.add_argument('-save_model_every', type=int, default=2000,
+    #                    help="Save checkpoint at this interval.")
 
     parser.add_argument('-report_every', type=int, default=10,
                         help="Print stats at this interval.")

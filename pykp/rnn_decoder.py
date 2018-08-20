@@ -4,6 +4,8 @@ import torch.nn as nn
 from pykp.attention import Attention
 import numpy as np
 from pykp.masked_softmax import MaskedSoftmax
+import math
+import logging
 
 class RNNDecoder(nn.Module):
     def __init__(self, vocab_size, embed_size, hidden_size, num_layers, memory_bank_size, coverage_attn, copy_attn, pad_idx, dropout=0.0):
@@ -69,6 +71,10 @@ class RNNDecoder(nn.Module):
         # apply attention, get input-aware context vector, attention distribution and update the coverage vector
         context, attn_dist, coverage = self.attention_layer(last_layer_h_next, memory_bank, src_mask, coverage)
         # context: [batch_size, memory_bank_size], attn_dist: [batch_size, max_input_seq_len], coverage: [batch_size, max_input_seq_len]
+
+        # Debug
+        #if math.isnan(attn_dist[0,0].item()):
+        #    logging.info('nan attention distribution')
 
         vocab_dist_input = torch.cat((context, last_layer_h_next), dim=1)  # [B, memory_bank_size + decoder_size]
 

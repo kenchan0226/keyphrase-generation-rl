@@ -1,5 +1,8 @@
 import torch
+import math
+import logging
 
+EPS = 1e-8
 
 def masked_cross_entropy(class_dist, target, trg_mask, trg_lens=None,
                          coverage_attn=False, coverage=None, attn_dist=None, lambda_coverage=0):
@@ -16,7 +19,7 @@ def masked_cross_entropy(class_dist, target, trg_mask, trg_lens=None,
     """
     num_classes = class_dist.size(2)
     class_dist_flat = class_dist.view(-1, num_classes)  # [batch_size*trg_seq_len, num_classes]
-    log_dist_flat = torch.log(class_dist_flat)
+    log_dist_flat = torch.log(class_dist_flat + EPS)
     target_flat = target.view(-1, 1)  # [batch*trg_seq_len, 1]
     losses_flat = -torch.gather(log_dist_flat, dim=1, index=target_flat) # [batch * trg_seq_len, 1]
     losses = losses_flat.view(*target.size())  # [batch, trg_seq_len]
@@ -34,7 +37,13 @@ def masked_cross_entropy(class_dist, target, trg_mask, trg_lens=None,
         loss = losses.sum(dim=1) # [batch_size]
     '''
     loss = losses.sum(dim=1)  # [batch_size]
-    return loss.sum()
+    loss = loss.sum()
+
+    # Debug
+    #if math.isnan(loss.item()):
+    #    logging.info("NaN loss.")
+
+    return loss
 
 def compute_coverage_losses(coverage, attn_dist):
     """

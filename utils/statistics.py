@@ -6,12 +6,15 @@ class Statistics:
     Accumulator for loss staistics. Modified from OpenNMT
     """
 
-    def __init__(self, loss=0.0, n_tokens=0):
+    def __init__(self, loss=0.0, n_tokens=0, n_batch=0, forward_time=0.0, loss_compute_time=0.0, backward_time=0.0):
         assert type(loss) is float or type(loss) is int
         assert type(n_tokens) is int
         self.loss = loss
         self.n_tokens = n_tokens
-        self.start_time = time.time()
+        self.n_batch = n_batch
+        self.forward_time = forward_time
+        self.loss_compute_time = loss_compute_time
+        self.backward_time = backward_time
 
     def update(self, stat, update_n_src_words=False):
         """
@@ -22,20 +25,28 @@ class Statistics:
         """
         self.loss += stat.loss
         self.n_tokens += stat.n_tokens
+        self.n_batch += stat.n_batch
+        self.forward_time += stat.forward_time
+        self.loss_compute_time += stat.loss_compute_time
+        self.backward_time += stat.backward_time
 
     def xent(self):
-        """ compute cross entropy """
+        """ compute normalized cross entropy """
+        if self.n_tokens == 0:
+            print("error")
         return self.loss / self.n_tokens
 
     def ppl(self):
-        """ compute perplexity """
+        """ compute normalized perplexity """
         return math.exp(min(self.loss / self.n_tokens, 100))
 
-    def elapsed_time(self):
-        """ compute elapsed time """
-        return time.time() - self.start_time
+    def total_time(self):
+        return self.forward_time, self.loss_compute_time, self.backward_time
 
     def clear(self):
         self.loss = 0.0
         self.n_tokens = 0
-        self.start_time = time.time()
+        self.n_batch = 0
+        self.forward_time = 0.0
+        self.loss_compute_time = 0.0
+        self.backward_time = 0.0
