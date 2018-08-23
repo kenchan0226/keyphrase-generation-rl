@@ -89,7 +89,7 @@ def main(opt):
     # build vocab from training src
     # build word2id, id2word, and vocab, where vocab is a counter
     # with special tokens, '<pad>': 0, '<bos>': 1, '<eos>': 2, '<unk>': 3
-    # word2id, id2word are ordered by frequencies
+    # word2id, id2word are ordered by frequencies, includes all the tokens in the data
     # simply concatenate src and target when building vocab
     word2idx, idx2word, token_freq_counter = build_vocab(tokenized_train_pairs)
 

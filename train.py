@@ -130,7 +130,7 @@ def load_data_vocab(opt, load_train=True):
     logging.info("Loading vocab from disk: %s" % (opt.vocab))
     word2idx, idx2word, vocab = torch.load(opt.vocab + '/vocab.pt', 'wb')
 
-    # one2many data loader
+    # constructor data loader
     logging.info("Loading train and validate data from '%s'" % opt.data)
 
     if load_train:  # load training dataset
@@ -144,8 +144,11 @@ def load_data_vocab(opt, load_train=True):
             logging.info('#(train data size: #(batch)=%d' % (len(train_loader)))
         else:  # load one2many dataset
             train_one2many = torch.load(opt.data + '/train.one2many.pt', 'wb')
-            train_one2many_dataset = KeyphraseDataset(train_one2many, word2idx=word2idx, idx2word=idx2word, type='one2many', include_original=True)
-            train_loader = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
+            train_one2many_dataset = KeyphraseDataset(train_one2many, word2idx=word2idx, idx2word=idx2word, type='one2many')
+            train_loader = DataLoader(dataset=train_one2many_dataset,
+                                      collate_fn=train_one2many_dataset.collate_fn_one2many,
+                                      num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
+                                      shuffle=True)
             logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_loader.dataset), train_loader.one2one_number(), len(train_loader), train_loader.one2one_number() / len(train_loader)))
     else:
         train_loader = None
@@ -158,14 +161,16 @@ def load_data_vocab(opt, load_train=True):
                                           collate_fn=valid_one2one_dataset.collate_fn_one2one,
                                           num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
                                           shuffle=False)
-        logging.info('#(train data size: #(batch)=%d' % (len(train_loader)))
+        logging.info('#(valid data size: #(batch)=%d' % (len(train_loader)))
     else:
         valid_one2many = torch.load(opt.data + '/valid.one2many.pt', 'wb')
         # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
         valid_one2many = valid_one2many[:2000]
-        valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2idx=word2idx, idx2word=idx2word, type='one2many',
-                                                  include_original=True)
-        valid_loader = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+        valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2idx=word2idx, idx2word=idx2word, type='one2many')
+        valid_loader = DataLoader(dataset=valid_one2many_dataset,
+                                  collate_fn=valid_one2many_dataset.collate_fn_one2many,
+                                  num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
+                                  shuffle=False)
         logging.info(
             '#(valid data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (
             len(valid_loader.dataset), valid_loader.one2one_number(), len(valid_loader),
