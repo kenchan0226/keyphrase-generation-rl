@@ -19,7 +19,10 @@ import collections
 import itertools
 import logging
 
+
 from torch.distributions import Categorical
+
+EPS = 1e-8
 
 
 class Sequence(object):
@@ -196,395 +199,214 @@ class SequenceGenerator(object):
 
         return seq_idx2batch_idx, flattened_idx_map, inputs, decoder_states, memory_banks, src_masks, src_oovs, contexts, coverages, oov_lists
 
-    def beam_search(self, src, src_lens, src_oov, src_mask, oov_list, word2idx):
+    def beam_search(self, src, src_lens, src_oov, src_mask, oov_lists, word2idx):
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
         :param src_lens: a list containing the length of src sequences for each batch, with len=batch
         :param src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
         :param src_mask: a FloatTensor, [batch, src_seq_len]
-        :param oov_list:
-        :param word2idx:
+        :param oov_lists: list of oov words (idx2word) for each batch, len=batch
+        :param word2idx: a dictionary
         """
 
         self.model.eval()
-        batch_size = src.size(0)
 
-        max_num_oov = max([len(oov) for oov in oov_list])  # max number of oov for each batch
+        with torch.no_grad():
+            batch_size = src.size(0)
 
-        # Encoding
-        memory_bank, encoder_final_state = self.model.encoder(src, src_lens)
-        # [batch_size, max_src_len, memory_bank_size], [batch_size, memory_bank_size]
+            max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
 
-        # Init decoder state
-        decoder_init_state = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
+            # Encoding
+            memory_bank, encoder_final_state = self.model.encoder(src, src_lens)
+            # [batch_size, max_src_len, memory_bank_size], [batch_size, memory_bank_size]
 
-        # init initial_input to be BOS token
-        decoder_init_input = src.new_ones(batch_size) * word2idx[pykp.io.BOS_WORD]  # [batch_size]
+            # Init decoder state
+            decoder_init_state = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
 
-        # init context
-        context = self.model.init_context(memory_bank)  # [batch, memory_bank_size]
+            # init initial_input to be BOS token
+            decoder_init_input = src.new_ones(batch_size) * word2idx[pykp.io.BOS_WORD]  # [batch_size]
 
-        if self.coverage_attn:  # init coverage
-            coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, src_len]
+            # init context
+            context = self.model.init_context(memory_bank)  # [batch, memory_bank_size]
 
-        # maintain a TopN heaps for each batch, each topN heaps has a capacity of beam_size, used to store sequence objects
-        partial_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
-        complete_sequences = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
+            if self.coverage_attn:  # init coverage
+                coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, src_len]
 
-        # store a sequence object to each TopN_heap in partial sequences with initial input, initial states, etc.
-        for batch_i in range(batch_size):
-            seq = Sequence(
-                batch_idx=batch_i,
-                word_idx_list=[decoder_init_input[batch_i]],
-                decoder_state=decoder_init_state[:, batch_i, :].unsqueeze(1),  # [dec_layers, 1, decoder_size]
-                memory_bank=memory_bank[batch_i].unsqueeze(0),  # [1, src_len, memory_bank_size]
-                src_mask=src_mask[batch_i].unsqueeze(0),  # [1, src_len]
-                src_oov=src_oov[batch_i].unsqueeze(0),  # [1, src_len]
-                oov_list=oov_list[batch_i],
-                log_probs=[],
-                score=0.0,
-                context=context[batch_i].unsqueeze(0),  # [1, memory_bank_size]
-                coverage=coverage[batch_i].unsqueeze(0),  # [1, src_len]
-                attn_dist=[]
-            )
-            partial_sequences[batch_i].push(seq)
+            # maintain a TopN heaps for each batch, each topN heaps has a capacity of beam_size, used to store sequence objects
+            partial_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
+            complete_sequences = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
 
-        '''
-        Run beam search.
-        '''
-        for t in range(1, self.max_sequence_length + 1):
-            # the total number of partial sequences of all the batches
-            num_partial_sequences = sum([len(batch_seqs) for batch_seqs in partial_sequences])
-            if num_partial_sequences == 0:
-                # We have run out of partial candidates; often happens when beam_size is small
-                break
-
-            # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_idx2batch_idx, flattened_id_map, y_t_flattened, decoder_state_flattened, memory_bank_flattened, src_mask_flattened, src_oov_flattened, context_flattened, coverage_flattened, oov_list_flattened = self.sequence_to_batch(partial_sequences)
-
-            # Run one-step generation
-            # [flattened_batch, vocab_size], [dec_layers, flattened_batch, decoder_size], [flattened_batch, memory_bank_size], [flattened_batch, src_len], [flattened_batch, src_len]
-            decoder_dist, h_t, context, attn_dist, _, coverage = \
-                self.model.decoder(y_t_flattened, decoder_state_flattened, memory_bank_flattened, src_mask_flattened, context_flattened, max_num_oov, src_oov_flattened, coverage_flattened)
-
-            log_decoder_dist = torch.log(decoder_dist)
-
-            top_k_probs, top_k_word_indices = log_decoder_dist.data.topk(self.beam_size, dim=-1) # [flattened_batch, beam_size]
-
-            '''
-            # (batch_size * beam_size, 1, src_len) -> (batch_size * beam_size, src_len)
-            if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
-                attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
-            else:
-                attn_weights = attn_weights.squeeze(1)
-            '''
-
-            '''
-            # tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, hyp_seq_size, trg_hidden_dim), squeeze the first dim
-            if isinstance(new_dec_hiddens, tuple):
-                new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
-                new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
-                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
-            # convert to a list of hidden state for each beam, with dimension [hidden_dim]
-            '''
-
-            # For each partial sequence, push it to the TopN heap of the corresponding batch
+            # store a sequence object to each TopN_heap in partial sequences with initial input, initial states, etc.
+            # partial_sequences, a list of topN heaps, len=batch_size
             for batch_i in range(batch_size):
-                num_new_hyp_in_batch = 0
-                new_partial_sequences = TopN_heap(self.beam_size)
+                seq = Sequence(
+                    batch_idx=batch_i,
+                    word_idx_list=[decoder_init_input[batch_i]],
+                    decoder_state=decoder_init_state[:, batch_i, :].unsqueeze(1),  # [dec_layers, 1, decoder_size]
+                    memory_bank=memory_bank[batch_i].unsqueeze(0),  # [1, src_len, memory_bank_size]
+                    src_mask=src_mask[batch_i].unsqueeze(0),  # [1, src_len]
+                    src_oov=src_oov[batch_i].unsqueeze(0),  # [1, src_len]
+                    oov_list=oov_lists[batch_i],
+                    log_probs=[],
+                    score=0.0,
+                    context=context[batch_i].unsqueeze(0),  # [1, memory_bank_size]
+                    coverage=coverage[batch_i].unsqueeze(0),  # [1, src_len]
+                    attn_dist=[]
+                )
+                partial_sequences[batch_i].push(seq)
 
-                for partial_idx, partial_seq in enumerate(partial_sequences[batch_i].extract()):
-                    num_new_hyp = 0
-                    flattened_seq_idx = flattened_id_map[batch_i][partial_idx]
+            '''
+            Run beam search.
+            '''
+            for t in range(1, self.max_sequence_length + 1):
+                # the total number of partial sequences of all the batches
+                num_partial_sequences = sum([len(batch_seqs) for batch_seqs in partial_sequences])
+                if num_partial_sequences == 0:
+                    # We have run out of partial candidates; often happens when beam_size is small
+                    break
 
-                    # check each new beam and decide to add to hypotheses or completed list
-                    for beam_i in range(self.beam_size):
-                        word_idx = top_k_word_indices[flattened_seq_idx][beam_i]
+                # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
+                seq_idx2batch_idx, flattened_idx_map, y_t_flattened, decoder_state_flattened, memory_bank_flattened, src_mask_flattened, src_oov_flattened, context_flattened, coverage_flattened, oov_list_flattened = self.sequence_to_batch(partial_sequences)
+                # seq_idx2batch_idx: [list of batch idx of seq in topN_heap_1, list of batch idx of seq in topN_heap_2, ...]
+                # flattened_idx_map: [list of seq_id in topN_heap_1, list of seq_id in topN_heap_2, ...], seq_id increment from 0 at the first seq in first batch up to the end
 
-                        # score=0 means this is the first word <BOS>, empty the sentence
-                        if partial_seq.score != 0:
-                            new_word_idx_list = copy.copy(partial_seq.word_idx_list)
-                        else:
-                            new_word_idx_list = []
-                        new_word_idx_list.append(word_idx)
+                # Run one-step generation
+                # [flattened_batch, vocab_size], [dec_layers, flattened_batch, decoder_size], [flattened_batch, memory_bank_size], [flattened_batch, src_len], [flattened_batch, src_len]
+                decoder_dist, h_t, context, attn_dist, _, coverage = \
+                    self.model.decoder(y_t_flattened, decoder_state_flattened, memory_bank_flattened, src_mask_flattened, context_flattened, max_num_oov, src_oov_flattened, coverage_flattened)
 
-                        new_partial_seq = Sequence(
-                            batch_idx=partial_seq.batch_idx,
-                            word_idx_list=new_word_idx_list,
-                            decoder_state=h_t[:, flattened_seq_idx, :].unsqueeze(1),
-                            memory_bank=partial_seq.context,
-                            src_mask=partial_seq.ctx_mask,
-                            src_oov=partial_seq.src_oov,
-                            oov_list=partial_seq.oov_list,
-                            log_probs=copy.copy(partial_seq.logprobs),
-                            score=copy.copy(partial_seq.score),
-                            context=context[flattened_seq_idx].unsqueeze(0),
-                            coverage=coverage[flattened_seq_idx].unsqueeze(0),
-                            attn_dist=copy.copy(partial_seq.attention)
-                        )
+                log_decoder_dist = torch.log(decoder_dist + EPS)
 
-                        # we have generated self.beam_size new hypotheses for current hyp, stop generating
-                        if num_new_hyp >= self.beam_size:
-                            break
+                top_k_probs, top_k_word_indices = log_decoder_dist.data.topk(self.beam_size, dim=-1) # [flattened_batch, beam_size]
 
-                        '''
-                        if self.include_attn_dist:
-                            if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
-                                attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
-                                new_partial_seq.attention.append((attn_weights[0][flattened_seq_id], attn_weights[1][flattened_seq_id]))
+                '''
+                # (batch_size * beam_size, 1, src_len) -> (batch_size * beam_size, src_len)
+                if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
+                    attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
+                else:
+                    attn_weights = attn_weights.squeeze(1)
+                '''
+
+                '''
+                # tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, hyp_seq_size, trg_hidden_dim), squeeze the first dim
+                if isinstance(new_dec_hiddens, tuple):
+                    new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
+                    new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
+                    new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
+                # convert to a list of hidden state for each beam, with dimension [hidden_dim]
+                '''
+
+                # For each partial sequence, push it to the TopN heap of the corresponding batch
+                for batch_i in range(batch_size):
+                    num_new_hyp_in_batch = 0
+                    new_partial_sequences = TopN_heap(self.beam_size)
+
+                    for partial_idx, partial_seq in enumerate(partial_sequences[batch_i].extract()):
+                        num_new_hyp = 0
+                        flattened_seq_idx = flattened_idx_map[batch_i][partial_idx]
+
+                        # check each new beam and decide to add to hypotheses or completed list
+                        for beam_i in range(self.beam_size):
+                            word_idx = top_k_word_indices[flattened_seq_idx][beam_i]
+
+                            # score=0 means this is the first word <BOS>, empty the sentence
+                            if partial_seq.score != 0:
+                                new_word_idx_list = copy.copy(partial_seq.word_idx_list)
                             else:
-                                new_partial_seq.attention.append(attn_weights[flattened_seq_id])
-                        else:
-                            new_partial_seq.attention = None
-                        '''
+                                new_word_idx_list = []
+                            new_word_idx_list.append(word_idx)
 
-                        if self.include_attn_dist:
-                            new_partial_seq.attn_dist.append(attn_dist[flattened_seq_idx].unsqueeze(0)) # [1, src_len]
+                            new_partial_seq = Sequence(
+                                batch_idx=partial_seq.batch_idx,
+                                word_idx_list=new_word_idx_list,
+                                decoder_state=h_t[:, flattened_seq_idx, :].unsqueeze(1),
+                                memory_bank=partial_seq.context,
+                                src_mask=partial_seq.src_mask,
+                                src_oov=partial_seq.src_oov,
+                                oov_list=partial_seq.oov_list,
+                                log_probs=copy.copy(partial_seq.logprobs),
+                                score=copy.copy(partial_seq.score),
+                                context=context[flattened_seq_idx].unsqueeze(0),
+                                coverage=coverage[flattened_seq_idx].unsqueeze(0),
+                                attn_dist=copy.copy(partial_seq.attention)
+                            )
 
-                        new_partial_seq.log_probs.append(log_decoder_dist[flattened_seq_idx][beam_i])
-                        new_partial_seq.score = new_partial_seq.score + log_decoder_dist[flattened_seq_idx][beam_i]
+                            # we have generated self.beam_size new hypotheses for current hyp, stop generating
+                            if num_new_hyp >= self.beam_size:
+                                break
 
-                        # if predict EOS, push it into complete_sequences
-                        if word_idx == self.eos_idx:
-                            if self.length_normalization_factor > 0:
-                                L = self.length_normalization_const
-                                length_penalty = (L + len(new_partial_seq.sentence)) / (L + 1)
-                                new_partial_seq.score /= length_penalty ** self.length_normalization_factor
-                            complete_sequences[new_partial_seq.batch_idx].push(new_partial_seq)
-                        else:
-                            # print('Before pushing[%d]' % new_partial_sequences.size())
-                            # print(sorted([s.score for s in new_partial_sequences._data]))
-                            new_partial_sequences.push(new_partial_seq)
-                            # print('After pushing[%d]' % new_partial_sequences.size())
-                            # print(sorted([s.score for s in new_partial_sequences._data]))
-                            num_new_hyp += 1
-                            num_new_hyp_in_batch += 1
+                            '''
+                            if self.include_attn_dist:
+                                if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
+                                    attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
+                                    new_partial_seq.attention.append((attn_weights[0][flattened_seq_id], attn_weights[1][flattened_seq_id]))
+                                else:
+                                    new_partial_seq.attention.append(attn_weights[flattened_seq_id])
+                            else:
+                                new_partial_seq.attention = None
+                            '''
 
-                    # print('Finished no.%d partial sequence' % partial_id)
-                    # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
-                    # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
+                            if self.include_attn_dist:
+                                new_partial_seq.attn_dist.append(attn_dist[flattened_seq_idx].unsqueeze(0)) # [1, src_len]
 
-                partial_sequences[batch_i] = new_partial_sequences
+                            new_partial_seq.log_probs.append(log_decoder_dist[flattened_seq_idx][beam_i])
+                            new_partial_seq.score = new_partial_seq.score + log_decoder_dist[flattened_seq_idx][beam_i]
 
-                print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
-                '''
-                # print-out for debug
-                print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_oov.cpu().data.numpy().tolist()]))
-                print('OOV list: \n\t %s' % str(partial_seq.oov_list))
+                            # if predict EOS, push it into complete_sequences
+                            if word_idx == self.eos_idx:
+                                if self.length_normalization_factor > 0:
+                                    L = self.length_normalization_const
+                                    length_penalty = (L + len(new_partial_seq.word_idx_list)) / (L + 1)
+                                    new_partial_seq.score /= length_penalty ** self.length_normalization_factor
+                                complete_sequences[new_partial_seq.batch_idx].push(new_partial_seq)
+                            else:
+                                # print('Before pushing[%d]' % new_partial_sequences.size())
+                                # print(sorted([s.score for s in new_partial_sequences._data]))
+                                new_partial_sequences.push(new_partial_seq)
+                                # print('After pushing[%d]' % new_partial_sequences.size())
+                                # print(sorted([s.score for s in new_partial_sequences._data]))
+                                num_new_hyp += 1
+                                num_new_hyp_in_batch += 1
 
-                for seq_id, seq in enumerate(new_partial_sequences._data):
-                    print('%d, score=%.5f : %s' % (seq_id, seq.score, str(seq.sentence)))
+                        # print('Finished no.%d partial sequence' % partial_id)
+                        # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
+                        # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
 
-                print('*' * 50)
-                '''
+                    partial_sequences[batch_i] = new_partial_sequences
 
-            print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (t, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+                    print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+                    '''
+                    # print-out for debug
+                    print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_oov.cpu().data.numpy().tolist()]))
+                    print('OOV list: \n\t %s' % str(partial_seq.oov_list))
+    
+                    for seq_id, seq in enumerate(new_partial_sequences._data):
+                        print('%d, score=%.5f : %s' % (seq_id, seq.score, str(seq.sentence)))
+    
+                    print('*' * 50)
+                    '''
 
-            # print('Round=%d' % (current_len))
-            # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))
-            # for b_i in range(batch_size):
-            #     print('\t\tbatch %d, #(hyp seq)=%d' % (b_i, len(partial_sequences[b_i])))
-            # print('\t#(completed) = %d' % (sum([len(batch_heap) for batch_heap in complete_sequences])))
-            # for b_i in range(batch_size):
-            #     print('\t\tbatch %d, #(completed seq)=%d' % (b_i, len(complete_sequences[b_i])))
+                print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (t, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
 
-        # If we have no complete sequences then fall back to the partial sequences.
-        # But never output a mixture of complete and partial sequences because a
-        # partial sequence could have a higher score than all the complete
-        # sequences.
+                # print('Round=%d' % (current_len))
+                # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))
+                # for b_i in range(batch_size):
+                #     print('\t\tbatch %d, #(hyp seq)=%d' % (b_i, len(partial_sequences[b_i])))
+                # print('\t#(completed) = %d' % (sum([len(batch_heap) for batch_heap in complete_sequences])))
+                # for b_i in range(batch_size):
+                #     print('\t\tbatch %d, #(completed seq)=%d' % (b_i, len(complete_sequences[b_i])))
 
-        # append all the partial_sequences to complete
-        # [complete_sequences[s.batch_id] for s in partial_sequences]
-        for batch_i in range(batch_size):
-            if len(complete_sequences[batch_i]) == 0:
-                complete_sequences[batch_i] = partial_sequences[batch_i].extract(sort=True)
-            complete_sequences[batch_i] = complete_sequences[batch_i].extract(sort=True)
+            # If we have no complete sequences then fall back to the partial sequences.
+            # But never output a mixture of complete and partial sequences because a
+            # partial sequence could have a higher score than all the complete
+            # sequences.
+
+            # append all the partial_sequences to complete
+            # [complete_sequences[s.batch_id] for s in partial_sequences]
+            for batch_i in range(batch_size):
+                if len(complete_sequences[batch_i]) == 0:
+                    complete_sequences[batch_i] = partial_sequences[batch_i].extract(sort=True)
+                complete_sequences[batch_i] = complete_sequences[batch_i].extract(sort=True)
 
         return complete_sequences
 
-    def sample(self, src_input, src_len, src_oov, oov_list, word2id, k, is_greedy=False):
-        """
-        Sample k sequeces for each src in src_input
-
-        Args:
-            k: number of sequences to sample
-            is_greedy: if True, pick up the most probable word after the 1st time step
-
-        """
-        # self.model.eval()  # have to be in training mode, to backprop
-        batch_size = len(src_input)
-
-        src_mask = self.get_mask(src_input)  # same size as input_src
-        src_context, (src_h, src_c) = self.model.encoder(src_input, src_len)
-
-        # prepare the init hidden vector, (batch_size, trg_seq_len, dec_hidden_dim)
-        dec_hiddens = self.model.init_decoder_state(src_h, src_c)
-
-        # each dec_hidden is (trg_seq_len, dec_hidden_dim)
-        initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
-        if isinstance(dec_hiddens, tuple):
-            dec_hiddens = (dec_hiddens[0].squeeze(0), dec_hiddens[1].squeeze(0))
-            dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
-        elif isinstance(dec_hiddens, list):
-            dec_hiddens = dec_hiddens
-
-        sampled_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
-
-        for batch_i in range(batch_size):
-            seq = Sequence(
-                batch_id=batch_i,
-                sentence=[initial_input[batch_i]],
-                dec_hidden=dec_hiddens[batch_i],
-                context=src_context[batch_i],
-                ctx_mask=src_mask[batch_i],
-                src_oov=src_oov[batch_i],
-                oov_list=oov_list[batch_i],
-                logprobs=None,
-                score=0.0,
-                attention=[])
-            sampled_sequences[batch_i].push(seq)
-
-        for current_len in range(1, self.max_sequence_length + 1):
-            # the total number of partial sequences of all the batches
-            num_partial_sequences = sum([len(batch_seqs) for batch_seqs in sampled_sequences])
-
-            # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(sampled_sequences)
-
-            # Run one-step generation. log_probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
-            log_probs, new_dec_hiddens, attn_weights = self.model.generate(
-                trg_input=inputs,
-                dec_hidden=dec_hiddens,
-                enc_context=contexts,
-                ctx_mask=ctx_mask,
-                src_map=src_oovs,
-                oov_list=oov_lists,
-                max_len=1,
-                return_attention=self.return_attention
-            )
-
-            # squeeze these outputs, (hyp_seq_size, trg_len=1, K+1) -> (hyp_seq_size, K+1)
-            log_probs = log_probs.view(num_partial_sequences, -1)
-            exp_log_probs = torch.exp(log_probs)  # convert the log_prob back to prob
-            # m = Categorical(exp_log_probs)
-
-            # probs, words are [batch_size, k] at time 0, and [batch_size * k, 1] later on
-            if current_len == 1:
-                if is_greedy:
-                    probs, words = log_probs.data.topk(k, dim=-1)
-                else:
-                    # m.sample_n(k)
-                    words = torch.multinomial(exp_log_probs, k, replacement=False)
-                    probs = torch.gather(log_probs, 1, words)
-                    words = words.data
-            else:
-                if is_greedy:
-                    probs, words = log_probs.data.topk(1, dim=-1)
-                else:
-                    # words = m.sample_n(1)
-                    words = torch.multinomial(exp_log_probs, 1, replacement=False)
-                    probs = torch.gather(log_probs, 1, words)
-                    words = words.data
-
-            # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
-            if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
-                attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
-            else:
-                attn_weights = attn_weights.squeeze(1)
-
-            # tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, hyp_seq_size, trg_hidden_dim), squeeze the first dim
-            if isinstance(new_dec_hiddens, tuple):
-                new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
-                new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
-                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
-
-            # For every partial_sequence (num_partial_sequences in total), find and trim to the best hypotheses (beam_size in total)
-            for batch_i in range(batch_size):
-                new_partial_sequences = TopN_heap(self.beam_size)
-
-                for partial_id, partial_seq in enumerate(sampled_sequences[batch_i].extract()):
-                    flattened_seq_id = flattened_id_map[batch_i][partial_id]
-
-                    seq_number = 1 if current_len > 1 else k
-
-                    # check each new beam and decide to add to hypotheses or completed list
-                    for seq_i in range(seq_number):
-                        w = words[flattened_seq_id][seq_i]
-                        # if w has appeared before, ignore current hypothese
-                        # if w in partial_seq.vocab:
-                        #     continue
-
-                        # score=0 means this is the first word <BOS>, empty the sentence
-                        if current_len > 1:
-                            new_sent = copy.copy(partial_seq.sentence) + [w]
-                            new_logprobs = partial_seq.logprobs + [probs[flattened_seq_id][seq_i]]
-                            new_score = partial_seq.score + probs[flattened_seq_id][seq_i]
-                        else:
-                            new_sent = [w]
-                            new_logprobs = [probs[flattened_seq_id][seq_i]]
-                            new_score = probs[flattened_seq_id][seq_i]
-
-                        # dec_hidden and attention of this partial_seq are shared by its descendant beams
-                        new_dec_hidden = new_dec_hiddens[flattened_seq_id]
-
-                        if self.return_attention:
-                            new_attention = copy.copy(partial_seq.attention)
-                            if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
-                                attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
-                                new_attention.append((attn_weights[0][flattened_seq_id], attn_weights[1][flattened_seq_id]))
-                            else:
-                                new_attention.append(attn_weights[flattened_seq_id])
-                        else:
-                            new_attention = None
-
-                        new_partial_seq = Sequence(
-                            batch_id=partial_seq.batch_id,
-                            sentence=new_sent,
-                            dec_hidden=new_dec_hidden,
-                            context=partial_seq.context,
-                            ctx_mask=partial_seq.ctx_mask,
-                            src_oov=partial_seq.src_oov,
-                            oov_list=partial_seq.oov_list,
-                            logprobs=new_logprobs,
-                            score=new_score,
-                            attention=new_attention
-                        )
-
-                        # print('Before pushing[%d]' % new_partial_sequences.size())
-                        # print(sorted([s.score for s in new_partial_sequences._data]))
-                        new_partial_sequences.push(new_partial_seq)
-                        # print('After pushing[%d]' % new_partial_sequences.size())
-                        # print(sorted([s.score for s in new_partial_sequences._data]))
-
-                    # print('Finished no.%d partial sequence' % partial_id)
-                    # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
-                    # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
-
-                sampled_sequences[batch_i] = new_partial_sequences
-
-                # print('Batch=%d, \t#(hypothese) = %d' % (batch_i, len(sampled_sequences[batch_i])))
-                '''
-                # print-out for debug
-                print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_oov.cpu().data.numpy().tolist()]))
-                print('OOV list: \n\t %s' % str(partial_seq.oov_list))
-
-                for seq_id, seq in enumerate(new_partial_sequences._data):
-                    print('%d, score=%.5f : %s' % (seq_id, seq.score, str(seq.sentence)))
-
-                print('*' * 50)
-                '''
-
-            # print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in sampled_sequences])))
-
-            # print('Round=%d' % (current_len))
-            # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))
-            # for b_i in range(batch_size):
-            #     print('\t\tbatch %d, #(hyp seq)=%d' % (b_i, len(partial_sequences[b_i])))
-            # print('\t#(completed) = %d' % (sum([len(batch_heap) for batch_heap in complete_sequences])))
-            # for b_i in range(batch_size):
-            #     print('\t\tbatch %d, #(completed seq)=%d' % (b_i, len(complete_sequences[b_i])))
-
-        for batch_i in range(batch_size):
-            sampled_sequences[batch_i] = sampled_sequences[batch_i].extract(sort=True)
-
-        return sampled_sequences
