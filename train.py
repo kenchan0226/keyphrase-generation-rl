@@ -16,6 +16,7 @@ import train_ml
 from utils.statistics import Statistics
 from utils.report import export_train_and_valid_results
 from utils.time_log import time_since
+from utils.data_loader import load_data_and_vocab
 import time
 import math
 
@@ -49,13 +50,10 @@ def process_opt(opt):
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-        opt.pred_path = opt.pred_path % (opt.exp, opt.timemark)
         opt.model_path = opt.model_path % (opt.exp, opt.timemark)
 
     if not os.path.exists(opt.exp_path):
         os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.pred_path):
-        os.makedirs(opt.pred_path)
     if not os.path.exists(opt.model_path):
         os.makedirs(opt.model_path)
 
@@ -125,65 +123,6 @@ def init_model(opt):
 
     return model.to(opt.device)
 
-def load_data_vocab(opt, load_train=True):
-    # load vocab
-    logging.info("Loading vocab from disk: %s" % (opt.vocab))
-    word2idx, idx2word, vocab = torch.load(opt.vocab + '/vocab.pt', 'wb')
-
-    # constructor data loader
-    logging.info("Loading train and validate data from '%s'" % opt.data)
-
-    if load_train:  # load training dataset
-        if opt.train_ml: # load one2one dataset
-            train_one2one = torch.load(opt.data + '/train.one2one.pt', 'wb')
-            train_one2one_dataset = KeyphraseDataset(train_one2one, word2idx=word2idx, idx2word=idx2word, type='one2one')
-            train_loader = DataLoader(dataset=train_one2one_dataset,
-                                              collate_fn=train_one2one_dataset.collate_fn_one2one,
-                                              num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
-                                              shuffle=True)
-            logging.info('#(train data size: #(batch)=%d' % (len(train_loader)))
-        else:  # load one2many dataset
-            train_one2many = torch.load(opt.data + '/train.one2many.pt', 'wb')
-            train_one2many_dataset = KeyphraseDataset(train_one2many, word2idx=word2idx, idx2word=idx2word, type='one2many')
-            train_loader = DataLoader(dataset=train_one2many_dataset,
-                                      collate_fn=train_one2many_dataset.collate_fn_one2many,
-                                      num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
-                                      shuffle=True)
-            logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_loader.dataset), train_loader.one2one_number(), len(train_loader), train_loader.one2one_number() / len(train_loader)))
-    else:
-        train_loader = None
-
-
-    if opt.train_ml:  # load one2one validation dataset
-        valid_one2one = torch.load(opt.data + '/valid.one2one.pt', 'wb')
-        valid_one2one_dataset = KeyphraseDataset(valid_one2one, word2idx=word2idx, idx2word=idx2word, type='one2one')
-        valid_loader = DataLoader(dataset=valid_one2one_dataset,
-                                          collate_fn=valid_one2one_dataset.collate_fn_one2one,
-                                          num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
-                                          shuffle=False)
-        logging.info('#(valid data size: #(batch)=%d' % (len(train_loader)))
-    else:
-        valid_one2many = torch.load(opt.data + '/valid.one2many.pt', 'wb')
-        # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
-        valid_one2many = valid_one2many[:2000]
-        valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2idx=word2idx, idx2word=idx2word, type='one2many')
-        valid_loader = DataLoader(dataset=valid_one2many_dataset,
-                                  collate_fn=valid_one2many_dataset.collate_fn_one2many,
-                                  num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
-                                  shuffle=False)
-        logging.info(
-            '#(valid data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (
-            len(valid_loader.dataset), valid_loader.one2one_number(), len(valid_loader),
-            valid_loader.one2one_number() / len(valid_loader)))
-    # assign vocab to opt
-    opt.word2idx = word2idx
-    opt.idx2word = idx2word
-    opt.vocab = vocab
-
-    logging.info('#(vocab)=%d' % len(vocab))
-    logging.info('#(vocab used)=%d' % opt.vocab_size)
-
-    return train_loader, valid_loader, word2idx, idx2word, vocab
 
 def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, opt):
     '''
@@ -300,19 +239,20 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                 param_group['lr'] = new_lr
 
                     # log loss, ppl, and time
+                    print("check point!")
                     logging.info(
-                        '# batch: %d; average training perplexity: %.3f; average validation perplexity: %.3f; best validation perplexity: %.3f' % (
-                            total_batch, current_train_ppl, current_valid_ppl, best_valid_ppl))
+                        'Epoch: %d; total batches: %d; average training perplexity: %.3f; average validation perplexity: %.3f; best validation perplexity: %.3f' % (
+                            epoch, total_batch, current_train_ppl, current_valid_ppl, best_valid_ppl))
                     logging.info(
-                        '# batch: %d; average training loss: %.3f; average validation loss: %.3f; best validation loss: %.3f' % (
-                            total_batch, current_train_loss, current_valid_loss, best_valid_loss))
+                        'Epoch: %d; total batches: %d; average training loss: %.3f; average validation loss: %.3f; best validation loss: %.3f' % (
+                            epoch, total_batch, current_train_loss, current_valid_loss, best_valid_loss))
                     train_forward_time, train_loss_compute_time, train_backward_time = report_train_statistics.total_time()
                     valid_forward_time, valid_loss_compute_time, _ = valid_loss_stat.total_time()
-                    logging.info('# batch: %d; avg. training forward time: %.1f; avg. training loss compute time: %.1f; avg. training backward time: %.1f' % (
-                        total_batch, train_forward_time, train_loss_compute_time, train_backward_time
+                    logging.info('Epoch: %d; total batches: %d; avg. training forward time: %.1f; avg. training loss compute time: %.1f; avg. training backward time: %.1f' % (
+                        epoch, total_batch, train_forward_time, train_loss_compute_time, train_backward_time
                     ))
-                    logging.info('# batch: %d; avg. validation forward time: %.1f; avg. validation loss compute time: %.1f' % (
-                            total_batch, valid_forward_time, valid_loss_compute_time
+                    logging.info('Epoch: %d; total batches: %d; avg. validation forward time: %.1f; avg. validation loss compute time: %.1f' % (
+                        epoch, total_batch, valid_forward_time, valid_loss_compute_time
                     ))
 
                     report_train_ppl.append(current_train_ppl)
@@ -333,18 +273,17 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     logging.info('Overall average training loss: %.3f, ppl: %.3f' % (total_train_statistics.xent(), total_train_statistics.ppl()))
 
 def main(opt):
-    logging = config.init_logging(logger_name='train', log_file=opt.exp_path + '/output.log', stdout=True)
-    logging.info('Parameters:')
-    [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
-
     try:
         start_time = time.time()
-        train_data_loader, valid_data_loader, word2idx, idx2word, vocab = load_data_vocab(opt)
+        train_data_loader, valid_data_loader, word2idx, idx2word, vocab = load_data_and_vocab(opt, load_train=True)
         load_data_time = time_since(start_time)
         logging.info('Time for loading the data: %.1f' % load_data_time)
+        start_time = time.time()
         model = init_model(opt)
         optimizer_ml, optimizer_rl, criterion = init_optimizer_criterion(model, opt)
         train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, opt)
+        training_time = time_since(start_time)
+        logging.info('Time for training: %.1f' % training_time)
     except Exception as e:
         logging.exception("message")
     return
@@ -364,6 +303,10 @@ if __name__ == "__main__":
 
     if opt.train_ml == opt.train_rl:
         raise ValueError("Either train with supervised learning or RL, but not both!")
+
+    logging = config.init_logging(logger_name='train', log_file=opt.exp_path + '/output.log', stdout=True)
+    logging.info('Parameters:')
+    [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 
     main(opt)
 
