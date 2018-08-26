@@ -98,10 +98,11 @@ class RNNDecoder(nn.Module):
                 vocab_dist_ = torch.cat((vocab_dist_, extra_zeros), dim=1)
 
             final_dist = vocab_dist_.scatter_add(1, src_oov, attn_dist_)
+            assert final_dist.size() == torch.Size([batch_size, self.vocab_size + max_num_oovs])
         else:
             final_dist = vocab_dist
+            assert final_dist.size() == torch.Size([batch_size, self.vocab_size])
 
-        assert final_dist.size() == torch.Size([batch_size, self.vocab_size + max_num_oovs])
         assert h_next.size() == torch.Size([1, batch_size, self.hidden_size])
         assert context.size() == torch.Size([batch_size, self.memory_bank_size])
         assert attn_dist.size() == torch.Size([batch_size, max_src_seq_len])
