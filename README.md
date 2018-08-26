@@ -44,9 +44,10 @@ Some common options for the training script:
 Please read the config.py for more details about the options.
 
 ## TODO
-- [ ] Beam Search
+- [x] Beam Search
 - [x] Early Stopping of training
-- [ ] Evaluation
+- [x] Evaluation
+- [ ] Adjust the code and parameters of the baseline until we get competitive results
 - [ ] Training with RL
 
 ## References
