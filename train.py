@@ -175,7 +175,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 batch_loss_stat, decoder_dist = train_ml.train_one_batch(batch, model, optimizer_ml, opt)
                 report_train_statistics.update(batch_loss_stat)
                 total_train_statistics.update(batch_loss_stat)
-                logging.info("one_batch")
+                #logging.info("one_batch")
                 #report_loss.append(('train_ml_loss', loss_ml))
                 #report_loss.append(('PPL', loss_ml))
 
