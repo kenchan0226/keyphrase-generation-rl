@@ -117,10 +117,10 @@ class SequenceGenerator(object):
                  eos_idx,
                  beam_size,
                  max_sequence_length,
-                 coverage_attn,
-                 include_attn_dist,
+                 coverage_attn=False,
+                 include_attn_dist=True,
                  length_normalization_factor=0.0,
-                 length_normalization_const=5.,
+                 length_normalization_const=5.
                  ):
         """Initializes the generator.
 
@@ -175,9 +175,10 @@ class SequenceGenerator(object):
 
         # concatenate each token generated at the previous time step into a tensor, [flattened_batch_size, 1]
         # if the token is a oov, replace it with <unk>
-        inputs = torch.cat([torch.LongTensor([seq.word_idx_list[-1]] if seq.word_idx_list[-1] < self.model.vocab_size else [self.model.unk_word]) for seq in flattened_sequences]).unsqueeze(1)
-        assert inputs.size() == torch.Size([flattened_batch_size, 1])
-
+        inputs = torch.cat([torch.LongTensor([seq.word_idx_list[-1]] if seq.word_idx_list[-1] < self.model.vocab_size else [self.model.unk_idx]) for seq in flattened_sequences])
+        inputs = inputs.to(flattened_sequences[0].memory_bank.device)
+        #assert inputs.size() == torch.Size([flattened_batch_size, 1])
+        assert inputs.size() == torch.Size([flattened_batch_size])
         # concat each hidden state in flattened_sequences into a tensor
         decoder_states = torch.cat([seq.decoder_state for seq in flattened_sequences], dim=1) # [dec_layers, flattened_batch_size, decoder_size]
         '''
@@ -193,7 +194,7 @@ class SequenceGenerator(object):
         memory_banks = torch.cat([seq.memory_bank for seq in flattened_sequences], dim=0)  # [flatten_batch_size, src_len, memory_bank_size]
         src_masks = torch.cat([seq.src_mask for seq in flattened_sequences], dim=0)  # [flatten_batch_size, src_len]
         src_oovs = torch.cat([seq.src_oov for seq in flattened_sequences], dim=0)  # [flatten_batch_size, src_len]
-        coverages = torch.cat([seq.coverage for seq in flattened_sequences], dim=0)  # [flatten_batch_size, src_len]
+        coverages = torch.cat([seq.coverage for seq in flattened_sequences], dim=0) if self.coverage_attn else None  # [flatten_batch_size, src_len]
         contexts = torch.cat([seq.context for seq in flattened_sequences], dim=0)  # [flatten_batch_size, memory_bank_size]
         oov_lists = [seq.oov_list for seq in flattened_sequences]
 
@@ -250,7 +251,7 @@ class SequenceGenerator(object):
                     log_probs=[],
                     score=0.0,
                     context=context[batch_i].unsqueeze(0),  # [1, memory_bank_size]
-                    coverage=coverage[batch_i].unsqueeze(0),  # [1, src_len]
+                    coverage=coverage[batch_i].unsqueeze(0) if self.coverage_attn else None,  # [1, src_len]
                     attn_dist=[]
                 )
                 partial_sequences[batch_i].push(seq)
@@ -320,15 +321,15 @@ class SequenceGenerator(object):
                                 batch_idx=partial_seq.batch_idx,
                                 word_idx_list=new_word_idx_list,
                                 decoder_state=h_t[:, flattened_seq_idx, :].unsqueeze(1),
-                                memory_bank=partial_seq.context,
+                                memory_bank=partial_seq.memory_bank,
                                 src_mask=partial_seq.src_mask,
                                 src_oov=partial_seq.src_oov,
                                 oov_list=partial_seq.oov_list,
-                                log_probs=copy.copy(partial_seq.logprobs),
+                                log_probs=copy.copy(partial_seq.log_probs),
                                 score=copy.copy(partial_seq.score),
                                 context=context[flattened_seq_idx].unsqueeze(0),
-                                coverage=coverage[flattened_seq_idx].unsqueeze(0),
-                                attn_dist=copy.copy(partial_seq.attention)
+                                coverage=coverage[flattened_seq_idx].unsqueeze(0) if self.coverage_attn else None,
+                                attn_dist=copy.copy(partial_seq.attn_dist)
                             )
 
                             # we have generated self.beam_size new hypotheses for current hyp, stop generating
@@ -339,11 +340,11 @@ class SequenceGenerator(object):
                             if self.include_attn_dist:
                                 if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
                                     attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
-                                    new_partial_seq.attention.append((attn_weights[0][flattened_seq_id], attn_weights[1][flattened_seq_id]))
+                                    new_partial_seq.attn_dist.append((attn_weights[0][flattened_seq_id], attn_weights[1][flattened_seq_id]))
                                 else:
-                                    new_partial_seq.attention.append(attn_weights[flattened_seq_id])
+                                    new_partial_seq.attn_dist.append(attn_weights[flattened_seq_id])
                             else:
-                                new_partial_seq.attention = None
+                                new_partial_seq.attn_dist = None
                             '''
 
                             if self.include_attn_dist:

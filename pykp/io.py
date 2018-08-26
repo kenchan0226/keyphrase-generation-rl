@@ -130,9 +130,8 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         trg_str = [b['trg_str'] for b in batches]
 
         # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
-        if self.include_original:
-            seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str), key=lambda p: len(p[0]), reverse=True)
-            src, src_oov, oov_lists, src_str, trg_str = zip(*seq_pairs)
+        seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str), key=lambda p: len(p[0]), reverse=True)
+        src, src_oov, oov_lists, src_str, trg_str = zip(*seq_pairs)
 
         # pad the src and target sequences with <pad> token and convert to LongTensor
         src, src_lens, src_mask = self._pad(src)

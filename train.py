@@ -19,6 +19,7 @@ from utils.time_log import time_since
 from utils.data_loader import load_data_and_vocab
 import time
 import math
+import sys
 
 EPS = 1e-8
 
@@ -118,7 +119,6 @@ def init_model(opt):
         logging.info("loading previous checkpoint from %s" % opt.train_from)
         # TODO: load the saved model and override the current one
     else:
-        # TODO: dump the meta-model
         pass
 
     return model.to(opt.device)
@@ -175,6 +175,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 batch_loss_stat, decoder_dist = train_ml.train_one_batch(batch, model, optimizer_ml, opt)
                 report_train_statistics.update(batch_loss_stat)
                 total_train_statistics.update(batch_loss_stat)
+                logging.info("one_batch")
                 #report_loss.append(('train_ml_loss', loss_ml))
                 #report_loss.append(('PPL', loss_ml))
 
@@ -239,7 +240,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                 param_group['lr'] = new_lr
 
                     # log loss, ppl, and time
-                    print("check point!")
+                    #print("check point!")
+                    #sys.stdout.flush()
                     logging.info(
                         'Epoch: %d; total batches: %d; average training perplexity: %.3f; average validation perplexity: %.3f; best validation perplexity: %.3f' % (
                             epoch, total_batch, current_train_ppl, current_valid_ppl, best_valid_ppl))
@@ -264,7 +266,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                         logging.info('Have not increased for %d epochs, early stop training' % num_stop_dropping)
                         early_stop_flag = True
                         break
-
+                    #sys.stdout.flush()
                     report_train_statistics.clear()
 
     # export the training curve
@@ -291,7 +293,7 @@ def main(opt):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='train.py',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    config.preprocess_opts(parser)
+    config.vocab_opts(parser)
     config.model_opts(parser)
     config.train_opts(parser)
     opt = parser.parse_args()
@@ -299,12 +301,12 @@ if __name__ == "__main__":
     opt.input_feeding = False
     opt.copy_input_feeding = False
 
-    opt.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    opt.device = torch.device("cuda:%d" % opt.gpuid if torch.cuda.is_available() else "cpu")
 
     if opt.train_ml == opt.train_rl:
         raise ValueError("Either train with supervised learning or RL, but not both!")
 
-    logging = config.init_logging(logger_name='train', log_file=opt.exp_path + '/output.log', stdout=True)
+    logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=True)
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 

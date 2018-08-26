@@ -3,7 +3,7 @@ import os
 import sys
 import time
 
-def init_logging(logger_name, log_file, stdout=False):
+def init_logging(log_file, stdout=False):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
                                   datefmt='%m/%d/%Y %H:%M:%S'   )
 
@@ -16,7 +16,7 @@ def init_logging(logger_name, log_file, stdout=False):
     fh.setFormatter(formatter)
     fh.setLevel(logging.INFO)
 
-    logger = logging.getLogger(logger_name)
+    logger = logging.getLogger()
     logger.addHandler(fh)
     logger.setLevel(logging.INFO)
 
@@ -37,8 +37,8 @@ def model_opts(parser):
     parser.add_argument('-word_vec_size', type=int, default=100,
                         help='Word embedding for both.')
 
-    parser.add_argument('-position_encoding', action='store_true',
-                        help='Use a sin to mark relative words positions.')
+    #parser.add_argument('-position_encoding', action='store_true',
+    #                    help='Use a sin to mark relative words positions.')
     parser.add_argument('-share_embeddings', default=True, action='store_true',
                         help="""Share the word embeddings between encoder
                          and decoder.""")
@@ -60,7 +60,8 @@ def model_opts(parser):
                         help='Size of encoder hidden states')
     parser.add_argument('-decoder_size', type=int, default=300,
                         help='Size of decoder hidden states')
-
+    parser.add_argument('-dropout', type=float, default=0.1,
+                        help="Dropout probability; applied in LSTM stacks.")
     # parser.add_argument('-input_feed', type=int, default=1,
     #                     help="""Feed the context vector at each time step as
     #                     additional input (via concatenation with the word
@@ -129,7 +130,7 @@ def model_opts(parser):
     #parser.add_argument('-cascading_model', action="store_true", help='Train a copy model.')
 
 
-def preprocess_opts(parser):
+def vocab_opts(parser):
     # Dictionary Options
     parser.add_argument('-vocab_size', type=int, default=50000,
                         help="Size of the source vocabulary")
@@ -160,8 +161,10 @@ def train_opts(parser):
                         help="""If training from a checkpoint then this is the
                         path to the pretrained model's state_dict.""")
     # GPU
-    parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
-                        help="Use CUDA on the listed devices.")
+    parser.add_argument('-gpuid', default=0, type=int,
+                        help="Use CUDA on the selected device.")
+    #parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
+    #                    help="Use CUDA on the listed devices.")
     parser.add_argument('-seed', type=int, default=9527,
                         help="""Random seed used for the experiments
                         reproducibility.""")
@@ -207,8 +210,6 @@ def train_opts(parser):
                         max_grad_norm""")
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
-    parser.add_argument('-dropout', type=float, default=0.1,
-                        help="Dropout probability; applied in LSTM stacks.")
 
     # Learning options
     parser.add_argument('-train_ml', action="store_true", default=False,
@@ -285,8 +286,6 @@ def train_opts(parser):
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
                         help="Path of experiment log/plot.")
-    parser.add_argument('-pred_path', type=str, default="pred/%s.%s",
-                        help="Path of outputs of predictions.")
     parser.add_argument('-model_path', type=str, default="model/%s.%s",
                         help="Path of checkpoints.")
 
@@ -302,4 +301,46 @@ def train_opts(parser):
                         help='Beam size')
     parser.add_argument('-max_sent_length', type=int, default=6,
                         help='Maximum sentence length.')
+
+def predict_opts(parser):
+    parser.add_argument('-model', required=True,
+                       help='Path to model .pt file')
+    parser.add_argument('-verbose', action="store_true", help="Whether to log the results of every individual samples")
+    parser.add_argument('-present_kp_only', action="store_true", help="Only consider the keyphrases that present in the source text")
+    parser.add_argument('-data', required=True,
+                        help="""Path prefix to the "test.one2many.pt" file path from preprocess.py""")
+    parser.add_argument('-vocab', required=True,
+                        help="""Path prefix to the "vocab.pt"
+                            file path from preprocess.py""")
+    parser.add_argument('-beam_size', type=int, default=10,
+                       help='Beam size')
+    parser.add_argument('-max_length', type=int, default=6,
+                       help='Maximum prediction length.')
+
+    parser.add_argument('-gpuid', default=0, type=int,
+                        help="Use CUDA on the selected device.")
+    # parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
+    #                    help="Use CUDA on the listed devices.")
+    parser.add_argument('-seed', type=int, default=9527,
+                        help="""Random seed used for the experiments
+                            reproducibility.""")
+    parser.add_argument('-batch_size', type=int, default=64,
+                        help='Maximum batch size')
+    parser.add_argument('-batch_workers', type=int, default=4,
+                        help='Number of workers for generating batches')
+
+    timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
+
+    parser.add_argument('-timemark', type=str, default=timemark,
+                        help="The current time stamp.")
+
+    parser.add_argument('-include_attn_dist', action="store_true",
+                        help="Whether to return the attention distribution, for the visualization of the attention weights, haven't implemented")
+
+    parser.add_argument('-pred_path', type=str, default="pred/%s.%s",
+                        help="Path of outputs of predictions.")
+    parser.add_argument('-exp', type=str, default="stackexchange",
+                        help="Name of the experiment for logging.")
+    parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
+                        help="Path of experiment log/plot.")
 
