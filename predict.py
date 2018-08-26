@@ -93,7 +93,7 @@ if __name__=='__main__':
     if not os.path.exists(opt.pred_path):
         os.makedirs(opt.pred_path)
 
-    logging = config.init_logging(log_file=opt.exp_path + '/output.log')
+    logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=False)
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 
