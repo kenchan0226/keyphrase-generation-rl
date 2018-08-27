@@ -374,7 +374,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
     # Compute the micro averaged recall, precision and F-1 score
     #micro_avg_score_dict = {}
     for topk in topk_range:
-        micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k = compute_classificatioon_metrics(score_dict_all['num_matches@%d' % topk], total_predictions, total_targets)
+        micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k = compute_classificatioon_metrics(sum(score_dict_all['num_matches@%d' % topk]), total_predictions, total_targets)
         logging.info('micro_avg_precision@%d: %.3f' % (topk, micro_avg_precision_k))
         logging.info('micro_avg_recall@%d: %.3f' % (topk, micro_avg_recall_k))
         logging.info('micro_avg_f1_score@%d: %.3f' % (topk, micro_avg_f1_score_k))
