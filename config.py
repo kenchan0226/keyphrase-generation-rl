@@ -308,7 +308,7 @@ def predict_opts(parser):
     parser.add_argument('-model', required=True,
                        help='Path to model .pt file')
     parser.add_argument('-verbose', action="store_true", help="Whether to log the results of every individual samples")
-    parser.add_argument('-present_kp_only', action="store_true", help="Only consider the keyphrases that present in the source text")
+    #parser.add_argument('-present_kp_only', action="store_true", help="Only consider the keyphrases that present in the source text")
     parser.add_argument('-data', required=True,
                         help="""Path prefix to the "test.one2many.pt" file path from preprocess.py""")
     parser.add_argument('-vocab', required=True,

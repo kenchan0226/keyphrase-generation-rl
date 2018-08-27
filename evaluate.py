@@ -258,9 +258,6 @@ def compute_classificatioon_metrics(num_matches, num_predictions, num_trgs):
 
 def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
     score_dict_all = defaultdict(list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
-    example_idx = 0
-    total_predictions = 0
-    total_targets = 0
 
     # file for storing the predicted keyphrases
     pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
@@ -287,9 +284,8 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                 # src_str: a list of words; trg_str: a list of keyphrases, each keyphrase is a list of words
                 # pred_seq_list: a list of sequence objects, sorted by scores
                 # oov: a list of oov words
-                verbose_print_out = ''
-                predict_out = ''
-                verbose_print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
+
+                verbose_print_out = '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
 
                 # is_present: boolean np array indicate whether a predicted keyphrase is present in src
                 # not_duplicate: boolean np array indicate
@@ -309,8 +305,8 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                 pred_str_is_present, pred_str_not_duplicate, stemmed_pred_str_list = check_present_and_duplicate_keyphrases(src_str, processed_pred_str_list)
 
                 # print out all the predicted keyphrases
-                verbose_print_out += '[All PREDICTIONs] #(valid)=%d, #(present)=%d, #(all)=%d\n' % (
-                    sum(pred_str_is_valid), sum(pred_str_is_present), len(pred_seq_list))
+                verbose_print_out += '[All PREDICTIONs] #(valid)=%d, #(present)=%d, #(unique)=%d, #(all)=%d\n' % (
+                    sum(pred_str_is_valid), sum(pred_str_is_present), sum(pred_str_not_duplicate), len(pred_seq_list))
                 for word_list, is_present in zip(processed_pred_str_list, pred_str_is_present):
                     if is_present:
                         verbose_print_out += '\t\t[%s]' % ' '.join(word_list)
@@ -318,186 +314,119 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                         verbose_print_out += '\t\t%s' % ' '.join(word_list)
                 verbose_print_out += '\n'
 
-                trg_str_filter = trg_str_not_duplicate  # filter the duplicated target keyphrases
-                pred_str_filter = pred_str_not_duplicate * pred_str_is_valid # filter the duplicated and invalid predicted keyphrases
-                if opt.present_kp_only: # only keep the keyphrases that present in src
-                    trg_str_filter = trg_str_filter * trg_str_is_present
-                    pred_str_filter = pred_str_filter * pred_str_is_present
-
                 # Only keep the first one-word prediction, remove all the remaining keyphrases that only has one word.
                 extra_one_word_seqs_mask, num_one_word_seqs = compute_extra_one_word_seqs_mask(processed_pred_str_list)
-                pred_str_filter = pred_str_filter * extra_one_word_seqs_mask
                 verbose_print_out += "%d one-word sequences found, %d removed\n" % (num_one_word_seqs, num_one_word_seqs - 1)
 
-                # Apply filter
-                trg_str_list = [word_list for word_list, is_keep in zip(trg_str_list, trg_str_filter) if
-                                is_keep]
+                tmp_trg_str_filter = trg_str_not_duplicate
+                tmp_pred_str_filter = pred_str_not_duplicate * pred_str_is_valid * extra_one_word_seqs_mask
 
-                #processed_pred_seq_list = [seq for seq, is_keep in zip(processed_pred_seq_list, pred_str_filter) if is_keep]
-                filtered_pred_str_list = [word_list for word_list, is_keep in zip(processed_pred_str_list, pred_str_filter) if
-                                           is_keep]
-                stemmed_pred_str_list = [word_list for word_list, is_keep in zip(stemmed_pred_str_list, pred_str_filter) if
-                                           is_keep]
-                #processed_pred_score_list = [score for score, is_keep in zip(processed_pred_score_list, pred_str_filter) if is_keep]
+                # Filter for present keyphrase prediction
+                trg_str_filter_present = tmp_trg_str_filter * trg_str_is_present
+                pred_str_filter_present = tmp_pred_str_filter * pred_str_is_present
 
-                topk_range = [5, 10]
+                # Filter for absent keyphrase prediction
+                trg_str_filter_absent = tmp_trg_str_filter * np.inver(trg_str_is_present)
+                pred_str_filter_absent = tmp_pred_str_filter * np.invert(pred_str_is_present)
 
-                # output the filtered keyphrases to a file
-                pred_print_out = ""
-                for word_list_i, word_list in enumerate(filtered_pred_str_list):
-                    if word_list_i < len(filtered_pred_str_list) - 1:
-                        pred_print_out += '%s;' % ' '.join(word_list)
-                    else:
-                        pred_print_out += '%s\n' % ' '.join(word_list)
-                pred_output_file.write(pred_print_out)
+                # A list to store all the predicted keyphrases after filtering for both present and absent keyphrases
+                filtered_pred_str_list_present_and_absent = []
 
-                # A boolean np array indicates whether each prediction match the target after stemming
-                is_match = compute_match_result(trg_str_list=stemmed_trg_str_list, pred_str_list=stemmed_pred_str_list)
-
-                num_filtered_predictions = len(filtered_pred_str_list)
-                num_trg_str = len(trg_str_list)
-
-                # Print out and store the recall, precision and F-1 score of every sample
-                verbose_print_out += "Results:\n"
                 for is_present in [True, False]:
-                    for topk in topk_range:
-                        if is_present:
-                            results = compute_classification_metrics_at_k(is_match, num_filtered_predictions_is_present, num_trg_str_is_present, topk=topk, is_present=is_present)
+                    if is_present:
+                        present_tag = "present"
+                        trg_str_filter = trg_str_filter_present
+                        pred_str_filter = pred_str_filter_present
+                    else:
+                        present_tag = "absent"
+                        trg_str_filter = trg_str_filter_absent
+                        pred_str_filter = pred_str_filter_absent
+
+
+                    # Apply filter to
+
+                    filtered_trg_str_list = [word_list for word_list, is_keep in zip(trg_str_list, trg_str_filter) if
+                                    is_keep]
+                    filtered_stemmed_trg_str_list = [word_list for word_list, is_keep in zip(stemmed_trg_str_list, trg_str_filter)
+                                                     if
+                                                     is_keep]
+
+                    #processed_pred_seq_list = [seq for seq, is_keep in zip(processed_pred_seq_list, pred_str_filter) if is_keep]
+                    filtered_pred_str_list = [word_list for word_list, is_keep in zip(processed_pred_str_list, pred_str_filter) if
+                                               is_keep]
+                    filtered_stemmed_pred_str_list = [word_list for word_list, is_keep in zip(stemmed_pred_str_list, pred_str_filter) if
+                                               is_keep]
+                    #processed_pred_score_list = [score for score, is_keep in zip(processed_pred_score_list, pred_str_filter) if is_keep]
+
+                    topk_range = [5, 10]
+
+                    filtered_pred_str_list_present_and_absent += filtered_pred_str_list
+                    '''
+                    pred_print_out += '|%s:|' % present_tag
+                    for word_list_i, word_list in enumerate(filtered_pred_str_list):
+                        if word_list_i < len(filtered_pred_str_list) - 1:
+                            pred_print_out += '%s;' % ' '.join(word_list)
                         else:
-                            results = compute_classification_metrics_at_k(is_match, num_filtered_predictions_is_absent,
-                                                                          num_trg_str_is_absent, topk=topk,
-                                                                          is_present=is_present)
+                            pred_print_out += '%s' % ' '.join(word_list)
+                    '''
+
+                    # A boolean np array indicates whether each prediction match the target after stemming
+                    is_match = compute_match_result(trg_str_list=filtered_stemmed_trg_str_list, pred_str_list=filtered_stemmed_pred_str_list)
+
+                    num_filtered_predictions = len(filtered_pred_str_list)
+                    num_filtered_targets = len(filtered_trg_str_list)
+
+                    # Print out and store the recall, precision and F-1 score of every sample
+                    verbose_print_out += "Results (%s):\n" % present_tag
+                    for topk in topk_range:
+                        results = compute_classification_metrics_at_k(is_match, num_filtered_predictions,
+                                                                      num_filtered_targets, topk=topk,
+                                                                     is_present=is_present)
                         for metric, result in results.items():
                             score_dict_all[metric].append(result)
                             verbose_print_out += "%s: %.3f\n" % (metric, result)
 
-                total_predictions += num_filtered_predictions
-                total_targets += num_trg_str
+                    score_dict_all['num_predictions_%s' % present_tag].append(num_filtered_predictions)
+                    score_dict_all['num_targets_%s' % present_tag].append(num_filtered_targets)
+
                 if opt.verbose:
                     logging.info(verbose_print_out)
                     #print(verbose_print_out)
                     #sys.stdout.flush()
+
+                # output the filtered keyphrases to a file
+                pred_print_out = ''
+                for word_list_i, word_list in enumerate(filtered_pred_str_list_present_and_absent):
+                    if word_list_i < len(filtered_pred_str_list_present_and_absent) - 1:
+                        pred_print_out += '%s;' % ' '.join(word_list)
+                    else:
+                        pred_print_out += '%s' % ' '.join(word_list)
+                pred_print_out += '\n'
+                pred_output_file.write(pred_print_out)
 
     pred_output_file.close()
 
     # Compute the micro averaged recall, precision and F-1 score
     #micro_avg_score_dict = {}
 
-    for topk in topk_range:
-        micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k = compute_classificatioon_metrics(sum(score_dict_all['num_matches@%d' % topk]), total_predictions, total_targets)
-        logging.info('micro_avg_precision@%d: %.3f' % (topk, micro_avg_precision_k))
-        logging.info('micro_avg_recall@%d: %.3f' % (topk, micro_avg_recall_k))
-        logging.info('micro_avg_f1_score@%d: %.3f' % (topk, micro_avg_f1_score_k))
-        #micro_avg_score_dict['micro_avg_precision@%d' % topk]
-        #micro_avg_score_dict['micro_avg_recall@%d' % topk]
-        #micro_avg_score_dict['micro_avg_f1_score@%d' % topk]
-
-    # Compute the macro averaged recall, precision and F-1 score
-    for topk in topk_range:
-        macro_avg_precision_k = sum(score_dict_all['precision@%d'])/len(score_dict_all['precision@%d'])
-        marco_avg_recall_k = sum(score_dict_all['recall@%d'])/len(score_dict_all['recall@%d'])
-        marco_avg_f1_score_k = float(2*macro_avg_precision_k*marco_avg_recall_k)/(macro_avg_precision_k+marco_avg_recall_k)
-        logging.info('micro_avg_precision@%d: %.3f' % (topk, macro_avg_precision_k))
-        logging.info('micro_avg_recall@%d: %.3f' % (topk, marco_avg_recall_k))
-        logging.info('micro_avg_f1_score@%d: %.3f' % (topk, marco_avg_f1_score_k))
-
-"""
-def small(src_str_list, trg_str_2dlist, pred_seq_2dlist, oov, opt):
-    pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
-
-    for src_str, trg_str_list, pred_seq_list in zip(src_str_list, trg_str_2dlist, pred_seq_2dlist):
-        verbose_print_out = ''
-        predict_out = ''
-        verbose_print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
-
-        # is_present: boolean np array indicate whether a predicted keyphrase is present in src
-        # not_duplicate: boolean np array indicate
-        trg_str_is_present, trg_str_not_duplicate, stemmed_trg_str_list = check_present_and_duplicate_keyphrases(src_str,
-                                                                                                                 trg_str_list)
-
-        verbose_print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (
-        sum(trg_str_is_present), len(trg_str_list))
-        verbose_print_out += '\n'.join(
-            ['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in
-             zip(trg_str_list, trg_str_is_present)])
-        verbose_print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
-
-        # convert each idx in pred_seq to its word, processed_pred_str_list: a list of word list
-        # a pred_seq is invalid if len(processed_seq) == 0 or keep_flag and any word in processed_seq is UNK or it contains '.' or ','
-        pred_str_is_valid, processed_pred_seq_list, processed_pred_str_list, processed_pred_score_list = process_predseqs(
-            pred_seq_list, oov, opt.idx2word, opt)
-
-        # a list of boolean indicates which predicted keyphrases present in src, for the duplicated keyphrases after stemming, only consider the first one
-        pred_str_is_present, pred_str_not_duplicate, stemmed_pred_str_list = check_present_and_duplicate_keyphrases(src_str,
-                                                                                                                    processed_pred_str_list)
-
-        # print out all the predicted keyphrases
-        verbose_print_out += '[All PREDICTIONs] #(valid)=%d, #(present)=%d, #(all)=%d\n' % (
-            sum(pred_str_is_valid), sum(pred_str_is_present), len(pred_seq_list))
-        for word_list, is_present in zip(processed_pred_str_list, pred_str_is_present):
-            if is_present:
-                verbose_print_out += '\t\t[%s]' % ' '.join(word_list)
-            else:
-                verbose_print_out += '\t\t%s' % ' '.join(word_list)
-        verbose_print_out += '\n'
-
-        trg_str_filter = trg_str_not_duplicate  # filter the duplicated target keyphrases
-        pred_str_filter = pred_str_not_duplicate * pred_str_is_valid  # filter the duplicated and invalid predicted keyphrases
-        if opt.present_kp_only:  # only keep the keyphrases that present in src
-            trg_str_filter = trg_str_filter * trg_str_is_present
-            pred_str_filter = pred_str_filter * pred_str_is_present
-
-        # Only keep the first one-word prediction, remove all the remaining keyphrases that only has one word.
-        extra_one_word_seqs_mask, num_one_word_seqs = compute_extra_one_word_seqs_mask(processed_pred_str_list)
-        pred_str_filter = pred_str_filter * extra_one_word_seqs_mask
-        verbose_print_out += "%d one-word sequences found, %d removed\n" % (num_one_word_seqs, num_one_word_seqs - 1)
-
-        # Apply filter
-        trg_str_list = [word_list for word_list, is_keep in zip(trg_str_list, trg_str_filter) if
-                        is_keep]
-
-        # processed_pred_seq_list = [seq for seq, is_keep in zip(processed_pred_seq_list, pred_str_filter) if is_keep]
-        filtered_pred_str_list = [word_list for word_list, is_keep in zip(processed_pred_str_list, pred_str_filter) if
-                                  is_keep]
-        stemmed_pred_str_list = [word_list for word_list, is_keep in zip(processed_pred_str_list, pred_str_filter) if
-                                 is_keep]
-        # processed_pred_score_list = [score for score, is_keep in zip(processed_pred_score_list, pred_str_filter) if is_keep]
-
-        topk_range = [5, 10]
-
-        # output the filtered keyphrases to a file
-        pred_print_out = ""
-        for word_list_i, word_list in enumerate(filtered_pred_str_list):
-            if word_list_i < len(filtered_pred_str_list) - 1:
-                pred_print_out += '%s;' % ' '.join(word_list)
-            else:
-                pred_print_out += '%s\n' % ' '.join(word_list)
-        pred_output_file.write(pred_print_out)
-
-        # A boolean np array indicates whether each prediction match the target after stemming
-        is_match = compute_match_result(trg_str_list=stemmed_trg_str_list, pred_str_list=stemmed_pred_str_list)
-
-        num_filtered_predictions = len(filtered_pred_str_list)
-        num_trg_str = len(trg_str_list)
-
-        # Print out and store the recall, precision and F-1 score of every sample
-        verbose_print_out += "Results:\n"
+    for is_present in [True, False]:
+        present_tag = 'present' if is_present else 'absent'
+        logging.info('Final Results (%s):' % present_tag)
         for topk in topk_range:
-            results = compute_classification_metrics_at_k(is_match, num_filtered_predictions, num_trg_str, topk=topk)
-            for metric, result in results.items():
-                score_dict_all[metric].append(result)
-                verbose_print_out += "%s: %.3f\n" % (metric, result)
-
-        total_predictions += num_filtered_predictions
-        total_targets += num_trg_str
-        print(verbose_print_out)
-"""
-
-def add_word(word2idx, idx2word, word):
-    if word not in word2idx:
-        current_len = len(word2idx)
-        word2idx[word] = current_len
-        idx2word[current_len] = word
+            total_predictions = sum(score_dict_all['num_predictions_%s' % (present_tag)])
+            total_targets = sum(score_dict_all['num_targets_%s' % (present_tag)])
+            # Compute the micro averaged recall, precision and F-1 score
+            micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k = compute_classificatioon_metrics(sum(score_dict_all['num_matches@%d_%s' % (topk, present_tag)]), total_predictions, total_targets)
+            logging.info('micro_avg_precision@%d_%s:%.3f' % (topk, present_tag, micro_avg_precision_k))
+            logging.info('micro_avg_recall@%d_%s:%.3f' % (topk, present_tag, micro_avg_recall_k))
+            logging.info('micro_avg_f1_score@%d_%s:%.3f' % (topk, present_tag, micro_avg_f1_score_k))
+            # Compute the macro averaged recall, precision and F-1 score
+            macro_avg_precision_k = sum(score_dict_all['precision@%d_%s' % (topk, present_tag)])/len(score_dict_all['precision@%d_%s' % (topk, present_tag) ])
+            marco_avg_recall_k = sum(score_dict_all['recall@%d_%s' % (topk, present_tag)])/len(score_dict_all['recall@%d_%s' % (topk, present_tag) ])
+            marco_avg_f1_score_k = float(2*macro_avg_precision_k*marco_avg_recall_k)/(macro_avg_precision_k+marco_avg_recall_k)
+            logging.info('macro_avg_precision@%d_%s: %.3f' % (topk, present_tag, macro_avg_precision_k))
+            logging.info('macro_avg_recall@%d_%s: %.3f' % (topk, present_tag, marco_avg_recall_k))
+            logging.info('macro_avg_f1_score@%d_%s: %.3f' % (topk, present_tag, marco_avg_f1_score_k))
 
 
 if __name__ == '__main__':
