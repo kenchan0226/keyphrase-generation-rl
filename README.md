@@ -13,9 +13,9 @@ For the full kp20k dataset, please download from here [here](https://www.dropbox
 
 ### Formats
 * All the text should be tokenized and all the tokens should be separated by a space character.
-* All digits should be replaced by a '<digit>' tokens.
-* In source files, the title and the main body are separated by an '<eos>' token
-* in target files, the keyphrases are separated by an ';' character
+* All digits should be replaced by a `<digit>` tokens.
+* In source files, the title and the main body are separated by an `<eos>` token
+* in target files, the keyphrases are separated by an `;` character
 
 ## Numericalize Data
 The `preprocess.py` script numericalizes the three pairs of source-target files, and produce the following files
