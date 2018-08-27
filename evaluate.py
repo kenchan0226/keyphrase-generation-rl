@@ -221,7 +221,7 @@ def compute_match_result(trg_str_list, pred_str_list, type='exact'):
     return is_match
 
 
-def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, topk=5):
+def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, topk=5, is_present=True):
     """
     :param is_match: a boolean np array with size [num_predictions]
     :param predicted_list: 
@@ -239,7 +239,10 @@ def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, top
 
     precision_k, recall_k, f1_k = compute_classificatioon_metrics(num_matches, num_predictions, num_trgs)
 
-    return {'precision@%d' % topk: precision_k, 'recall@%d' % topk: recall_k, 'f1_score@%d' % topk: f1_k, 'num_matches@%d': num_matches}
+    if is_present:
+        return {'precision@%d_present' % topk: precision_k, 'recall@%d_present' % topk: recall_k, 'f1_score@%d_present' % topk: f1_k, 'num_matches@%d_present': num_matches}
+    else:
+        return {'precision@%d_absent' % topk: precision_k, 'recall@%d_absent' % topk: recall_k, 'f1_score@%d_absent' % topk: f1_k, 'num_matches@%d_absent': num_matches}
 
 
 def compute_classificatioon_metrics(num_matches, num_predictions, num_trgs):
@@ -356,11 +359,17 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
 
                 # Print out and store the recall, precision and F-1 score of every sample
                 verbose_print_out += "Results:\n"
-                for topk in topk_range:
-                    results = compute_classification_metrics_at_k(is_match, num_filtered_predictions, num_trg_str, topk=topk)
-                    for metric, result in results.items():
-                        score_dict_all[metric].append(result)
-                        verbose_print_out += "%s: %.3f\n" % (metric, result)
+                for is_present in [True, False]:
+                    for topk in topk_range:
+                        if is_present:
+                            results = compute_classification_metrics_at_k(is_match, num_filtered_predictions_is_present, num_trg_str_is_present, topk=topk, is_present=is_present)
+                        else:
+                            results = compute_classification_metrics_at_k(is_match, num_filtered_predictions_is_absent,
+                                                                          num_trg_str_is_absent, topk=topk,
+                                                                          is_present=is_present)
+                        for metric, result in results.items():
+                            score_dict_all[metric].append(result)
+                            verbose_print_out += "%s: %.3f\n" % (metric, result)
 
                 total_predictions += num_filtered_predictions
                 total_targets += num_trg_str
@@ -373,6 +382,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
 
     # Compute the micro averaged recall, precision and F-1 score
     #micro_avg_score_dict = {}
+
     for topk in topk_range:
         micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k = compute_classificatioon_metrics(sum(score_dict_all['num_matches@%d' % topk]), total_predictions, total_targets)
         logging.info('micro_avg_precision@%d: %.3f' % (topk, micro_avg_precision_k))
@@ -384,8 +394,8 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
 
     # Compute the macro averaged recall, precision and F-1 score
     for topk in topk_range:
-        macro_avg_precision_k = np.array(score_dict_all['precision@%d']).mean()
-        marco_avg_recall_k = np.array(score_dict_all['recall@%d']).mean()
+        macro_avg_precision_k = sum(score_dict_all['precision@%d'])/len(score_dict_all['precision@%d'])
+        marco_avg_recall_k = sum(score_dict_all['recall@%d'])/len(score_dict_all['recall@%d'])
         marco_avg_f1_score_k = float(2*macro_avg_precision_k*marco_avg_recall_k)/(macro_avg_precision_k+marco_avg_recall_k)
         logging.info('micro_avg_precision@%d: %.3f' % (topk, macro_avg_precision_k))
         logging.info('micro_avg_recall@%d: %.3f' % (topk, marco_avg_recall_k))

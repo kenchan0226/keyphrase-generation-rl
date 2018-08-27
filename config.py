@@ -290,6 +290,7 @@ def train_opts(parser):
                         help="Path of checkpoints.")
 
     # beam search setting
+    '''
     parser.add_argument('-beam_search_batch_example', type=int, default=8,
                         help='Maximum of examples for one batch, should be disabled for training')
     parser.add_argument('-beam_search_batch_size', type=int, default=8,
@@ -301,6 +302,7 @@ def train_opts(parser):
                         help='Beam size')
     parser.add_argument('-max_sent_length', type=int, default=6,
                         help='Maximum sentence length.')
+    '''
 
 def predict_opts(parser):
     parser.add_argument('-model', required=True,
@@ -312,7 +314,7 @@ def predict_opts(parser):
     parser.add_argument('-vocab', required=True,
                         help="""Path prefix to the "vocab.pt"
                             file path from preprocess.py""")
-    parser.add_argument('-beam_size', type=int, default=10,
+    parser.add_argument('-beam_size', type=int, default=50,
                        help='Beam size')
     parser.add_argument('-max_length', type=int, default=6,
                        help='Maximum prediction length.')
