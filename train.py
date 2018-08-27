@@ -253,17 +253,18 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     logging.info('Epoch: %d; total batches: %d; avg. training forward time: %.1f; avg. training loss compute time: %.1f; avg. training backward time: %.1f' % (
                         epoch, total_batch, train_forward_time, train_loss_compute_time, train_backward_time
                     ))
+                    '''
                     logging.info('Epoch: %d; total batches: %d; avg. validation forward time: %.1f; avg. validation loss compute time: %.1f' % (
                         epoch, total_batch, valid_forward_time, valid_loss_compute_time
                     ))
-
+                    '''
                     report_train_ppl.append(current_train_ppl)
                     report_valid_ppl.append(current_valid_ppl)
                     report_train_loss.append(current_train_loss)
                     report_valid_loss.append(current_valid_loss)
 
                     if num_stop_dropping >= opt.early_stop_tolerance:
-                        logging.info('Have not increased for %d epochs, early stop training' % num_stop_dropping)
+                        logging.info('Have not increased for %d check points, early stop training' % num_stop_dropping)
                         early_stop_flag = True
                         break
                     #sys.stdout.flush()

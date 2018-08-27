@@ -262,111 +262,112 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
     # file for storing the predicted keyphrases
     pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
 
-    for batch_i, batch in enumerate(one2many_data_loader):
-        src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist = batch
-        """
-        src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
-        src_lens: a list containing the length of src sequences for each batch, with len=batch
-        src_mask: a FloatTensor, [batch, src_seq_len]
-        src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
-        oov_lists: a list of oov words for each src, 2dlist
-        """
-        src = src.to(opt.device)
-        src_mask = src_mask.to(opt.device)
-        src_oov = src_oov.to(opt.device)
+    with torch.no_grad():
+        for batch_i, batch in enumerate(one2many_data_loader):
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist = batch
+            """
+            src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
+            src_lens: a list containing the length of src sequences for each batch, with len=batch
+            src_mask: a FloatTensor, [batch, src_seq_len]
+            src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
+            oov_lists: a list of oov words for each src, 2dlist
+            """
+            src = src.to(opt.device)
+            src_mask = src_mask.to(opt.device)
+            src_oov = src_oov.to(opt.device)
 
-        pred_seq_2dlist = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.word2idx)
-        # a list of list of sequence objs, len(pred_seq_2dlist)=batch_size, len(pred_seq_2dlist)=beam_size
+            pred_seq_2dlist = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.word2idx)
+            # a list of list of sequence objs, len(pred_seq_2dlist)=batch_size, len(pred_seq_2dlist)=beam_size
 
-        # Process it every src in the batch
-        for src_str, trg_str_list, pred_seq_list, oov in zip(src_str_list, trg_str_2dlist, pred_seq_2dlist, oov_lists):
-            # src_str: a list of words; trg_str: a list of keyphrases, each keyphrase is a list of words
-            # pred_seq_list: a list of sequence objects, sorted by scores
-            # oov: a list of oov words
-            verbose_print_out = ''
-            predict_out = ''
-            verbose_print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
+            # Process it every src in the batch
+            for src_str, trg_str_list, pred_seq_list, oov in zip(src_str_list, trg_str_2dlist, pred_seq_2dlist, oov_lists):
+                # src_str: a list of words; trg_str: a list of keyphrases, each keyphrase is a list of words
+                # pred_seq_list: a list of sequence objects, sorted by scores
+                # oov: a list of oov words
+                verbose_print_out = ''
+                predict_out = ''
+                verbose_print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
 
-            # is_present: boolean np array indicate whether a predicted keyphrase is present in src
-            # not_duplicate: boolean np array indicate
-            trg_str_is_present, trg_str_not_duplicate, stemmed_trg_str_list = check_present_and_duplicate_keyphrases(src_str, trg_str_list)
+                # is_present: boolean np array indicate whether a predicted keyphrase is present in src
+                # not_duplicate: boolean np array indicate
+                trg_str_is_present, trg_str_not_duplicate, stemmed_trg_str_list = check_present_and_duplicate_keyphrases(src_str, trg_str_list)
 
-            verbose_print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_list))
-            verbose_print_out += '\n'.join(
-                ['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in
-                 zip(trg_str_list, trg_str_is_present)])
-            verbose_print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
+                verbose_print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_list))
+                verbose_print_out += '\n'.join(
+                    ['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in
+                     zip(trg_str_list, trg_str_is_present)])
+                verbose_print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
 
-            # convert each idx in pred_seq to its word, processed_pred_str_list: a list of word list
-            # a pred_seq is invalid if len(processed_seq) == 0 or keep_flag and any word in processed_seq is UNK or it contains '.' or ','
-            pred_str_is_valid, processed_pred_seq_list, processed_pred_str_list, processed_pred_score_list = process_predseqs(pred_seq_list, oov, opt.idx2word, opt)
+                # convert each idx in pred_seq to its word, processed_pred_str_list: a list of word list
+                # a pred_seq is invalid if len(processed_seq) == 0 or keep_flag and any word in processed_seq is UNK or it contains '.' or ','
+                pred_str_is_valid, processed_pred_seq_list, processed_pred_str_list, processed_pred_score_list = process_predseqs(pred_seq_list, oov, opt.idx2word, opt)
 
-            # a list of boolean indicates which predicted keyphrases present in src, for the duplicated keyphrases after stemming, only consider the first one
-            pred_str_is_present, pred_str_not_duplicate, stemmed_pred_str_list = check_present_and_duplicate_keyphrases(src_str, processed_pred_str_list)
+                # a list of boolean indicates which predicted keyphrases present in src, for the duplicated keyphrases after stemming, only consider the first one
+                pred_str_is_present, pred_str_not_duplicate, stemmed_pred_str_list = check_present_and_duplicate_keyphrases(src_str, processed_pred_str_list)
 
-            # print out all the predicted keyphrases
-            verbose_print_out += '[All PREDICTIONs] #(valid)=%d, #(present)=%d, #(all)=%d\n' % (
-                sum(pred_str_is_valid), sum(pred_str_is_present), len(pred_seq_list))
-            for word_list, is_present in zip(processed_pred_str_list, pred_str_is_present):
-                if is_present:
-                    verbose_print_out += '\t\t[%s]' % ' '.join(word_list)
-                else:
-                    verbose_print_out += '\t\t%s' % ' '.join(word_list)
-            verbose_print_out += '\n'
+                # print out all the predicted keyphrases
+                verbose_print_out += '[All PREDICTIONs] #(valid)=%d, #(present)=%d, #(all)=%d\n' % (
+                    sum(pred_str_is_valid), sum(pred_str_is_present), len(pred_seq_list))
+                for word_list, is_present in zip(processed_pred_str_list, pred_str_is_present):
+                    if is_present:
+                        verbose_print_out += '\t\t[%s]' % ' '.join(word_list)
+                    else:
+                        verbose_print_out += '\t\t%s' % ' '.join(word_list)
+                verbose_print_out += '\n'
 
-            trg_str_filter = trg_str_not_duplicate  # filter the duplicated target keyphrases
-            pred_str_filter = pred_str_not_duplicate * pred_str_is_valid # filter the duplicated and invalid predicted keyphrases
-            if opt.present_kp_only: # only keep the keyphrases that present in src
-                trg_str_filter = trg_str_filter * trg_str_is_present
-                pred_str_filter = pred_str_filter * pred_str_is_present
+                trg_str_filter = trg_str_not_duplicate  # filter the duplicated target keyphrases
+                pred_str_filter = pred_str_not_duplicate * pred_str_is_valid # filter the duplicated and invalid predicted keyphrases
+                if opt.present_kp_only: # only keep the keyphrases that present in src
+                    trg_str_filter = trg_str_filter * trg_str_is_present
+                    pred_str_filter = pred_str_filter * pred_str_is_present
 
-            # Only keep the first one-word prediction, remove all the remaining keyphrases that only has one word.
-            extra_one_word_seqs_mask, num_one_word_seqs = compute_extra_one_word_seqs_mask(processed_pred_str_list)
-            pred_str_filter = pred_str_filter * extra_one_word_seqs_mask
-            verbose_print_out += "%d one-word sequences found, %d removed\n" % (num_one_word_seqs, num_one_word_seqs - 1)
+                # Only keep the first one-word prediction, remove all the remaining keyphrases that only has one word.
+                extra_one_word_seqs_mask, num_one_word_seqs = compute_extra_one_word_seqs_mask(processed_pred_str_list)
+                pred_str_filter = pred_str_filter * extra_one_word_seqs_mask
+                verbose_print_out += "%d one-word sequences found, %d removed\n" % (num_one_word_seqs, num_one_word_seqs - 1)
 
-            # Apply filter
-            trg_str_list = [word_list for word_list, is_keep in zip(trg_str_list, trg_str_filter) if
-                            is_keep]
+                # Apply filter
+                trg_str_list = [word_list for word_list, is_keep in zip(trg_str_list, trg_str_filter) if
+                                is_keep]
 
-            #processed_pred_seq_list = [seq for seq, is_keep in zip(processed_pred_seq_list, pred_str_filter) if is_keep]
-            filtered_pred_str_list = [word_list for word_list, is_keep in zip(processed_pred_str_list, pred_str_filter) if
-                                       is_keep]
-            stemmed_pred_str_list = [word_list for word_list, is_keep in zip(stemmed_pred_str_list, pred_str_filter) if
-                                       is_keep]
-            #processed_pred_score_list = [score for score, is_keep in zip(processed_pred_score_list, pred_str_filter) if is_keep]
+                #processed_pred_seq_list = [seq for seq, is_keep in zip(processed_pred_seq_list, pred_str_filter) if is_keep]
+                filtered_pred_str_list = [word_list for word_list, is_keep in zip(processed_pred_str_list, pred_str_filter) if
+                                           is_keep]
+                stemmed_pred_str_list = [word_list for word_list, is_keep in zip(stemmed_pred_str_list, pred_str_filter) if
+                                           is_keep]
+                #processed_pred_score_list = [score for score, is_keep in zip(processed_pred_score_list, pred_str_filter) if is_keep]
 
-            topk_range = [5, 10]
+                topk_range = [5, 10]
 
-            # output the filtered keyphrases to a file
-            pred_print_out = ""
-            for word_list_i, word_list in enumerate(filtered_pred_str_list):
-                if word_list_i < len(filtered_pred_str_list) - 1:
-                    pred_print_out += '%s;' % ' '.join(word_list)
-                else:
-                    pred_print_out += '%s\n' % ' '.join(word_list)
-            pred_output_file.write(pred_print_out)
+                # output the filtered keyphrases to a file
+                pred_print_out = ""
+                for word_list_i, word_list in enumerate(filtered_pred_str_list):
+                    if word_list_i < len(filtered_pred_str_list) - 1:
+                        pred_print_out += '%s;' % ' '.join(word_list)
+                    else:
+                        pred_print_out += '%s\n' % ' '.join(word_list)
+                pred_output_file.write(pred_print_out)
 
-            # A boolean np array indicates whether each prediction match the target after stemming
-            is_match = compute_match_result(trg_str_list=stemmed_trg_str_list, pred_str_list=stemmed_pred_str_list)
+                # A boolean np array indicates whether each prediction match the target after stemming
+                is_match = compute_match_result(trg_str_list=stemmed_trg_str_list, pred_str_list=stemmed_pred_str_list)
 
-            num_filtered_predictions = len(filtered_pred_str_list)
-            num_trg_str = len(trg_str_list)
+                num_filtered_predictions = len(filtered_pred_str_list)
+                num_trg_str = len(trg_str_list)
 
-            # Print out and store the recall, precision and F-1 score of every sample
-            verbose_print_out += "Results:\n"
-            for topk in topk_range:
-                results = compute_classification_metrics_at_k(is_match, num_filtered_predictions, num_trg_str, topk=topk)
-                for metric, result in results.items():
-                    score_dict_all[metric].append(result)
-                    verbose_print_out += "%s: %.3f\n" % (metric, result)
+                # Print out and store the recall, precision and F-1 score of every sample
+                verbose_print_out += "Results:\n"
+                for topk in topk_range:
+                    results = compute_classification_metrics_at_k(is_match, num_filtered_predictions, num_trg_str, topk=topk)
+                    for metric, result in results.items():
+                        score_dict_all[metric].append(result)
+                        verbose_print_out += "%s: %.3f\n" % (metric, result)
 
-            total_predictions += num_filtered_predictions
-            total_targets += num_trg_str
-            if opt.verbose:
-                logging.info(verbose_print_out)
-                #print(verbose_print_out)
-                #sys.stdout.flush()
+                total_predictions += num_filtered_predictions
+                total_targets += num_trg_str
+                if opt.verbose:
+                    logging.info(verbose_print_out)
+                    #print(verbose_print_out)
+                    #sys.stdout.flush()
 
     pred_output_file.close()
 
