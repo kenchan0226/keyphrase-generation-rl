@@ -326,7 +326,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                 pred_str_filter_present = tmp_pred_str_filter * pred_str_is_present
 
                 # Filter for absent keyphrase prediction
-                trg_str_filter_absent = tmp_trg_str_filter * np.inver(trg_str_is_present)
+                trg_str_filter_absent = tmp_trg_str_filter * np.invert(trg_str_is_present)
                 pred_str_filter_absent = tmp_pred_str_filter * np.invert(pred_str_is_present)
 
                 # A list to store all the predicted keyphrases after filtering for both present and absent keyphrases
