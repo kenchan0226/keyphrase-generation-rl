@@ -12,20 +12,22 @@ def export_train_and_valid_results(train_loss, valid_loss, train_ppl, valid_ppl,
     :param path: str
     :return:
     """
-    # Export the plots to pdf file
-    plot_train_valid_curve(train_loss, valid_loss, plot_every, path, 'Loss')
-    plot_train_valid_curve(train_ppl, valid_ppl, plot_every, path, 'Perplexity')
     # Export the results to a csv file
     labels = ['Training loss:,', 'Validation loss:,', 'Training perplexity:,', 'Validation Perplexity:,']
     float_lists = [train_loss, valid_loss, train_ppl, valid_ppl]
     with open(path + '.csv', 'w') as result_csv:
         for i in range(len(labels)):
             result_csv.write(labels[i] + concat_float_list(float_lists[i], ',') + '\n')
+    # Export the plots to pdf file
+    plot_train_valid_curve(train_loss, valid_loss, plot_every, path, 'Loss')
+    plot_train_valid_curve(train_ppl, valid_ppl, plot_every, path, 'Perplexity')
+
 
 def concat_float_list(list, delimiter=','):
     return delimiter.join([str(l) for l in list])
 
 def plot_train_valid_curve(train_loss, valid_loss, plot_every, path, loss_label):
+    plt.ioff()
     title = "Training and validation %s for every %d iterations" % (loss_label.lower(), plot_every)
     plt.figure(dpi=500)
     plt.title(title)

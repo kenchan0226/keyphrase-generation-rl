@@ -200,6 +200,10 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             # Checkpoint, decay the learning rate if validation loss stop dropping, apply early stopping if stop decreasing for several epochs.
             # Save the model parameters if the validation loss improved.
+            if total_batch % 4000 == 0:
+                print("Epoch %d; batch: %d; total batch: %d" % (epoch, batch_i, total_batch))
+                sys.stdout.flush()
+
             if opt.train_ml and epoch >= opt.start_checkpoint_at:
                 if (opt.checkpoint_interval == -1 and batch_i == len(train_data_loader) - 1) or \
                         (opt.checkpoint_interval > -1 and total_batch > 1 and total_batch % opt.checkpoint_interval == 0):
@@ -207,6 +211,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     valid_loss_stat = evaluate_loss(valid_data_loader, model, opt)
                     current_valid_loss = valid_loss_stat.xent()
                     current_valid_ppl = valid_loss_stat.ppl()
+                    print("Enter check point!")
+                    sys.stdout.flush()
 
                     current_train_ppl = report_train_statistics.ppl()
                     current_train_loss = report_train_statistics.xent()
@@ -218,6 +224,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                         exit()
 
                     if current_valid_loss < best_valid_loss: # update the best valid loss and save the model parameters
+                        print("Valid loss drops")
+                        sys.stdout.flush()
                         best_valid_loss = current_valid_loss
                         best_valid_ppl = current_valid_ppl
                         num_stop_dropping = 0
@@ -231,6 +239,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                         logging.info('Saving checkpoint to %s' % check_pt_model_path)
 
                     else:
+                        print("Valid loss does not drop")
+                        sys.stdout.flush()
                         num_stop_dropping += 1
                         # decay the learning rate by a factor
                         for i, param_group in enumerate(optimizer_ml.param_groups):
@@ -253,6 +263,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     logging.info('Epoch: %d; total batches: %d; avg. training forward time: %.1f; avg. training loss compute time: %.1f; avg. training backward time: %.1f' % (
                         epoch, total_batch, train_forward_time, train_loss_compute_time, train_backward_time
                     ))
+                    print('Epoch: %d; total batches: %d; average training perplexity: %.3f; average validation perplexity: %.3f; best validation perplexity: %.3f' % (
+                            epoch, total_batch, current_train_ppl, current_valid_ppl, best_valid_ppl))
+                    sys.stdout.flush()
                     '''
                     logging.info('Epoch: %d; total batches: %d; avg. validation forward time: %.1f; avg. validation loss compute time: %.1f' % (
                         epoch, total_batch, valid_forward_time, valid_loss_compute_time

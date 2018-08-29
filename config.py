@@ -326,7 +326,7 @@ def predict_opts(parser):
     parser.add_argument('-seed', type=int, default=9527,
                         help="""Random seed used for the experiments
                             reproducibility.""")
-    parser.add_argument('-batch_size', type=int, default=64,
+    parser.add_argument('-batch_size', type=int, default=8,
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
