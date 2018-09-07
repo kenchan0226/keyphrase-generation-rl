@@ -50,8 +50,10 @@ def train_one_batch(one2one_batch, model, optimizer, opt):
 
     if opt.loss_normalization == "tokens": # use number of target tokens to normalize the loss
         normalization = total_trg_tokens
-    else: # use batch_size to normalize the loss
+    elif opt.loss_normalization == 'batches': # use batch_size to normalize the loss
         normalization = src.size(0)
+    else:
+        raise ValueError('The type of loss normalization is invalid.')
 
     assert normalization > 0, 'normalization should be a positive number'
 

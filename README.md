@@ -43,6 +43,10 @@ Some common options for the training script:
 ```
 Please read the config.py for more details about the options.
 
+## Testing
+Example of testing command:
+`python3 predict.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -pred_path pred/%s.%s -enc_layers 2 -batch_size 8 -beam_size 100 -copy_attention -model [path_to_saved_model]`
+
 ## TODO
 - [x] Beam Search
 - [x] Early Stopping of training

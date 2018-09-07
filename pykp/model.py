@@ -154,7 +154,7 @@ class Seq2SeqModel(nn.Module):
         # Decoding
         h_t = self.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
         max_target_length = trg.size(1)
-        context = self.init_context(memory_bank)  # [batch, memory_bank_size]
+        #context = self.init_context(memory_bank)  # [batch, memory_bank_size]
 
         decoder_dist_all = []
         attention_dist_all = []
@@ -173,8 +173,8 @@ class Seq2SeqModel(nn.Module):
         #print(y_t[:5])
 
         for t in range(max_target_length):
-            decoder_dist, h_t, context, attn_dist, p_gen, coverage = \
-                self.decoder(y_t, h_t, memory_bank, src_mask, context, max_num_oov, src_oov, coverage)
+            decoder_dist, h_t, _, attn_dist, p_gen, coverage = \
+                self.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage)
             decoder_dist_all.append(decoder_dist.unsqueeze(1))  # [batch, 1, vocab_size]
             attention_dist_all.append(attn_dist.unsqueeze(1))  # [batch, 1, src_seq_len]
             if self.coverage_attn:

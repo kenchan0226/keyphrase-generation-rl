@@ -31,17 +31,24 @@ def main(opt):
 
         start_time = time.time()
         generator = SequenceGenerator(model,
+                                      bos_idx=opt.word2idx[pykp.io.BOS_WORD],
                                       eos_idx=opt.word2idx[pykp.io.EOS_WORD],
+                                      pad_idx=opt.word2idx[pykp.io.PAD_WORD],
                                       beam_size=opt.beam_size,
                                       max_sequence_length=opt.max_length,
+                                      copy_attn=opt.copy_attention,
                                       coverage_attn=opt.coverage_attn,
                                       include_attn_dist=opt.include_attn_dist,
-                                      length_normalization_factor=0.0,
-                                      length_normalization_const=5.
+                                      length_penalty_factor=opt.length_penalty_factor,
+                                      coverage_penalty_factor=opt.coverage_penalty_factor,
+                                      length_penalty=opt.length_penalty,
+                                      coverage_penalty=opt.coverage_penalty
                                       )
         evaluate_beam_search(generator, test_data_loader, opt)
         total_testing_time = time_since(start_time)
         logging.info('Time for a complete testing: %.1f' % total_testing_time)
+        print('Time for a complete testing: %.1f' % total_testing_time)
+        sys.stdout.flush()
 
     except Exception as e:
         logging.exception("message")

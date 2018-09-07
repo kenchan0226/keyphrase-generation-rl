@@ -1,8 +1,7 @@
 """
-Class for generating sequences
 Adapted from
-https://github.com/tensorflow/models/blob/master/im2txt/im2txt/inference_utils/sequence_generator.py
-https://github.com/eladhoffer/seq2seq.pytorch/blob/master/seq2seq/tools/beam_search.py
+OpenNMT-py: https://github.com/OpenNMT/OpenNMT-py
+and seq2seq-keyphrase-pytorch: https://github.com/memray/seq2seq-keyphrase-pytorch
 """
 
 import copy
@@ -18,96 +17,158 @@ import numpy as np
 import collections
 import itertools
 import logging
-
+import penalties
 
 from torch.distributions import Categorical
 
 EPS = 1e-8
 
+class Beam:
+    def __init__(self, size, pad, bos, eos,
+                 n_best=1, cuda=False,
+                 global_scorer=None,
+                 min_length=0,
+                 stepwise_penalty=False,
+                 block_ngram_repeat=0,
+                 exclusion_tokens=set()):
+        self.size = size
+        self.tt = torch.cuda if cuda else torch
 
-class Sequence(object):
-    """Represents a complete or partial sequence."""
+        # The score for each translation on the beam.
+        self.scores = self.tt.FloatTensor(size).zero_()
+        self.all_scores = []
 
-    def __init__(self, batch_idx, word_idx_list, decoder_state, memory_bank, src_mask, src_oov, oov_list, log_probs, score, context, coverage=None, attn_dist=None):
-        """Initializes the Sequence.
+        # The backpointers at each time-step.
+        self.prev_ks = []
 
-        Args:
-          batch_id: Original id of batch
-          word_idx_list: List of word ids in the sequence.
-          dec_hidden: model hidden state after generating the previous word.
-          context: attention read out
-          log_probs:  The log-probability of each word in the sequence.
-          score:    Score of the sequence (log-probability)
+        # The outputs at each time-step.
+        self.next_ys = [self.tt.LongTensor(size)
+                            .fill_(pad)]
+        self.next_ys[0][0] = bos
+
+        # Has EOS topped the beam yet.
+        self._eos = eos
+        self.eos_top = False
+
+        # The attentions (matrix) for each time.
+        self.attn = []
+
+        # Time and k pair for finished.
+        self.finished = []
+        self.n_best = n_best
+
+        # Information for global scoring.
+        self.global_scorer = global_scorer
+        self.global_state = {}
+
+        # Minimum prediction length
+        self.min_length = min_length
+
+        # Apply Penalty at every step
+        #self.stepwise_penalty = stepwise_penalty
+        #self.block_ngram_repeat = block_ngram_repeat
+        #self.exclusion_tokens = exclusion_tokens
+
+    def get_current_tokens(self):
+        """Get the outputs for the current timestep."""
+        return self.next_ys[-1]
+
+    def get_current_origin(self):
+        """Get the backpointers for the current timestep."""
+        return self.prev_ks[-1]
+
+    def done(self):
+        return self.eos_top and len(self.finished) >= self.n_best
+
+    def get_hyp(self, timestep, k):
         """
-        self.batch_idx = batch_idx
-        self.word_idx_list = word_idx_list
-        self.vocab = set(word_idx_list)  # for filtering duplicates
-        self.decoder_state = decoder_state
-        self.memory_bank = memory_bank
-        self.src_mask = src_mask
-        self.src_oov = src_oov
-        self.oov_list = oov_list
-        self.log_probs = log_probs
-        self.score = score
-        self.context = context
-        self.coverage = coverage
-        self.attn_dist = attn_dist
-
-    # For Python 3 compatibility (__cmp__ is deprecated).
-    def __lt__(self, other):
-        assert isinstance(other, Sequence)
-        return self.score < other.score
-
-    # Also for Python 3 compatibility.
-    def __eq__(self, other):
-        assert isinstance(other, Sequence)
-        return self.score == other.score
-
-
-class TopN_heap(object):
-    """Maintains the top n elements of an incrementally provided set."""
-
-    def __init__(self, n):
-        self._n = n
-        self._data = []
-
-    def __len__(self):
-        assert self._data is not None
-        return len(self._data)
-
-    def size(self):
-        assert self._data is not None
-        return len(self._data)
-
-    def push(self, x):
-        """Pushes a new element."""
-        assert self._data is not None
-        if len(self._data) < self._n:
-            heapq.heappush(self._data, x)
-        else:
-            heapq.heappushpop(self._data, x)
-
-    def extract(self, sort=False):
-        """Extracts all elements from the TopN.
-
-        The only method that can be called immediately after extract() is reset().
-
-        Args:
-          sort: Whether to return the elements in descending sorted order.
-
-        Returns:
-          A list of data; the top n elements provided to the set.
+        walk back to construct the full hypothesis given the finished time step and beam idx
+        :param timestep: int
+        :param k: int
+        :return:
         """
-        assert self._data is not None
-        data = self._data
-        if sort:
-            data.sort(reverse=True)
-        return data
+        hyp, attn = [], []
+        # iterate from output sequence length (with eos but not bos) - 1 to 0
+        for j in range(len(self.prev_ks[:timestep]) -1, -1, -1):
+            hyp.append(self.next_ys[j + 1][k])  # j+1 so that it will iterate from the <eos> token, and end before the <bos>
+            attn.append(self.attn[j][k])  # since it does not has attn for bos, it will also iterate from the attn for <eos>
+            # attn[j][k] Tensor with size [src_len]
+            k = self.prev_ks[j][k]  # find the beam idx of the previous token
 
-    def reset(self):
-        """Returns the TopN to an empty state."""
-        self._data = []
+        # hyp[::-1]: a list of idx (zero dim tensor), with len = output sequence length
+        # torch.stack(attn): FloatTensor, with size: [output sequence length, src_len]
+        return hyp[::-1], torch.stack(attn)
 
+    def advance(self, word_logits, attn_dist):
+        """
+        Given prob over words for every last beam `wordLk` and attention
+        `attn_out`: Compute and update the beam search.
+
+        Parameters:
+
+        * `word_logit`- probs of advancing from the last step [beam_size, vocab_size]
+        * `attn_dist`- attention at the last step [beam_size, src_len]
+
+        Returns: True if beam search is complete.
+        """
+        vocab_size = word_logits.size(1)
+        # To be implemented: stepwise penalty
+
+        # force the output to be longer than self.min_length
+        cur_len = len(self.next_ys)
+        if cur_len < self.min_length:
+            for k in range(len(word_logits)):
+                word_logits[k][self._eos] = -1e20
+        # Sum the previous scores
+        if len(self.prev_ks) > 0:
+            beam_scores = word_logits + self.scores.unsqueeze(1).expand_as(word_logits)
+            # Don't let EOS have children.
+            for i in range(self.next_ys[-1].size(0)):
+                if self.next_ys[-1][i] == self._eos:
+                    beam_scores[i] = -1e20
+            # To be implemented: block n-gram repeated
+
+        else:  # This is the first decoding step, every beam are the same
+            beam_scores = word_logits[0]
+        flat_beam_scores = beam_scores.view(-1)
+        best_scores, best_scores_idx = flat_beam_scores.topk(self.size, 0, True, True)  # [beam_size]
+
+        self.all_scores.append(self.score)  # list of tensor with size [beam_size]
+        self.scores = best_scores
+
+        # best_scores_idx indicate the idx in the flattened beam * vocab_isze array, so need to convert
+        # the idx back to which beam and word each score came from.
+        prev_k = best_scores_idx / vocab_size  # convert it to the beam indices that the top k scores came from, LongTensor, size: [beam_size]
+        self.prev_ks.append(prev_k)
+        self.next_ys.append((best_scores_idx - prev_k * vocab_size))  # convert it to the vocab indices, LongTensor, size: [beam_size]
+        self.attn.append(attn_dist.index_select(0, prev_k))  # select the attention dist from the corresponding beam, size: [beam_size, src_len]
+        self.global_scorer.update_global_state(self)  # update coverage vector, previous coverage penalty, and cov_total
+
+        for i in range(self.next_ys[-1].size(0)): # For each generated token in the current step, check if it is EOS
+            if self.next_ys[-1][i] == self._eos:
+                global_scores = self.global_scorer.score(self, self.scores)  # compute the score penalize by length and coverage
+                s = global_scores[i]
+                self.finished.append((s, len(self.next_ys) - 1, i))  # penalized score, length of sequence, beam_idx
+
+        # End condition is when top-of-beam is EOS and no global score.
+        if self.next_ys[-1][0] == self._eos:
+            self.all_scores.append(self.scores)
+            self.eos_top = True
+
+    def sort_finished(self, minimum=None):
+        if minimum is not None:
+            i = 0
+            # Add from beam until we have minimum outputs in the finished list
+            while len(self.finished) < minimum:
+                global_scores = self.global_scorer.score(self, self.scores)
+                s = global_scores[i]
+                self.finished.append((s, len(self.next_ys)-1, i)) # score, length of sequence (including <bos>, <eos>) -1, beam_idx
+                i += 1
+
+        self.finished.sort(key=lambda a: -a[0])
+        scores = [sc for sc, _, _ in self.finished]
+        ks = [(t,k) for _, t, k in self.finished]
+        return scores, ks
 
 class SequenceGenerator(object):
     """Class to generate sequences from an image-to-text model."""
@@ -115,12 +176,17 @@ class SequenceGenerator(object):
     def __init__(self,
                  model,
                  eos_idx,
+                 bos_idx,
+                 pad_idx,
                  beam_size,
                  max_sequence_length,
+                 copy_attn=False,
                  coverage_attn=False,
                  include_attn_dist=True,
-                 length_normalization_factor=0.0,
-                 length_normalization_const=5.
+                 length_penalty_factor=0.0,
+                 coverage_penalty_factor=0.0,
+                 length_penalty='avg',
+                 coverage_penalty='none'
                  ):
         """Initializes the generator.
 
@@ -140,65 +206,18 @@ class SequenceGenerator(object):
         """
         self.model = model
         self.eos_idx = eos_idx
+        self.bos_idx = bos_idx
+        self.pad_idx = pad_idx
         self.beam_size = beam_size
         self.max_sequence_length = max_sequence_length
-        self.length_normalization_factor = length_normalization_factor
-        self.length_normalization_const = length_normalization_const
+        self.length_penalty_factor = length_penalty_factor
+        self.coverage_penalty_factor = coverage_penalty_factor
         self.coverage_attn = coverage_attn
         self.include_attn_dist = include_attn_dist
-
-
-    def sequence_to_batch(self, sequence_lists):
-        '''
-        Convert 2d sequences (batch_size, beam_size) into 1d batches
-        :param sequence_lists: a list of TopN_heap object, each TopN_heap object contains beam_size of sequences
-        :return:
-        '''
-        # [list of batch idx of seq in topN_heap_1, list of batch idx of seq in topN_heap_2, ...]
-        seq_idx2batch_idx = [[seq.batch_idx for seq in sequence_list.extract()] for sequence_list in sequence_lists]
-
-        # to easily map the partial_sequences back to the flattened_sequences
-        # flatten_id_map = [list of seq_id in topN_heap_1, list of seq_id in topN_heap_2, ...]
-        # seq_id increment from 0 at the first seq in first batch up to the end
-        seq_idx = 0
-        flattened_idx_map = []
-        for sequence_list in sequence_lists:
-            seq_indices = []
-            for seq in sequence_list.extract():
-                seq_indices.append(seq_idx)
-                seq_idx += 1
-            flattened_idx_map.append(seq_indices)
-
-        # flatten sequence_list into [ seq_obj_1, seq_obj_2, ...], with len = batch_size * beam_size = flattened_batch_size
-        flattened_sequences = list(itertools.chain(*[seq.extract() for seq in sequence_lists]))
-        flattened_batch_size = len(flattened_sequences)
-
-        # concatenate each token generated at the previous time step into a tensor, [flattened_batch_size, 1]
-        # if the token is a oov, replace it with <unk>
-        inputs = torch.cat([torch.LongTensor([seq.word_idx_list[-1]] if seq.word_idx_list[-1] < self.model.vocab_size else [self.model.unk_idx]) for seq in flattened_sequences])
-        inputs = inputs.to(flattened_sequences[0].memory_bank.device)
-        #assert inputs.size() == torch.Size([flattened_batch_size, 1])
-        assert inputs.size() == torch.Size([flattened_batch_size])
-        # concat each hidden state in flattened_sequences into a tensor
-        decoder_states = torch.cat([seq.decoder_state for seq in flattened_sequences], dim=1) # [dec_layers, flattened_batch_size, decoder_size]
-        '''
-        if isinstance(flattened_sequences[0].dec_hidden, tuple):  
-            h_states = torch.cat([seq.dec_hidden[0] for seq in flattened_sequences]).view(1, batch_size, -1)
-            c_states = torch.cat([seq.dec_hidden[1] for seq in flattened_sequences]).view(1, batch_size, -1)
-            dec_hiddens = (h_states, c_states)
-        else:
-            dec_hiddens = torch.cat([seq.state for seq in flattened_sequences])
-        '''
-
-        # concat each memory_bank, src_mask, src_oovs, into tensors, concat oov_lists into a 2D list
-        memory_banks = torch.cat([seq.memory_bank for seq in flattened_sequences], dim=0)  # [flatten_batch_size, src_len, memory_bank_size]
-        src_masks = torch.cat([seq.src_mask for seq in flattened_sequences], dim=0)  # [flatten_batch_size, src_len]
-        src_oovs = torch.cat([seq.src_oov for seq in flattened_sequences], dim=0)  # [flatten_batch_size, src_len]
-        coverages = torch.cat([seq.coverage for seq in flattened_sequences], dim=0) if self.coverage_attn else None  # [flatten_batch_size, src_len]
-        contexts = torch.cat([seq.context for seq in flattened_sequences], dim=0)  # [flatten_batch_size, memory_bank_size]
-        oov_lists = [seq.oov_list for seq in flattened_sequences]
-
-        return seq_idx2batch_idx, flattened_idx_map, inputs, decoder_states, memory_banks, src_masks, src_oovs, contexts, coverages, oov_lists
+        #self.lambda_coverage = lambda_coverage
+        self.coverage_penalty = coverage_penalty
+        self.copy_attn = copy_attn
+        self.global_scorer = GNMTGlobalScorer(length_penalty_factor, coverage_penalty_factor, coverage_penalty, length_penalty)
 
     def beam_search(self, src, src_lens, src_oov, src_mask, oov_lists, word2idx):
         """
@@ -209,205 +228,187 @@ class SequenceGenerator(object):
         :param oov_lists: list of oov words (idx2word) for each batch, len=batch
         :param word2idx: a dictionary
         """
-
         self.model.eval()
-
-        #with torch.no_grad():
         batch_size = src.size(0)
-
-        max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
+        beam_size = self.beam_size
 
         # Encoding
         memory_bank, encoder_final_state = self.model.encoder(src, src_lens)
         # [batch_size, max_src_len, memory_bank_size], [batch_size, memory_bank_size]
 
+        max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
+
         # Init decoder state
         decoder_init_state = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
 
         # init initial_input to be BOS token
-        decoder_init_input = src.new_ones(batch_size) * word2idx[pykp.io.BOS_WORD]  # [batch_size]
-
-        # init context
-        context = self.model.init_context(memory_bank)  # [batch, memory_bank_size]
+        decoder_init_input = src.new_ones((batch_size * beam_size, 1)) * word2idx[pykp.io.BOS_WORD]  # [batch_size*beam_size, 1]
 
         if self.coverage_attn:  # init coverage
-            coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, src_len]
+            #coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, src_len]
+            coverage = src.new_zeros((batch_size * beam_size, 1))  # [batch_size * beam_size ,1]
+        else:
+            coverage = None
 
-        # maintain a TopN heaps for each batch, each topN heaps has a capacity of beam_size, used to store sequence objects
-        partial_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
-        complete_sequences = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
+        # expand memory_bank, src_mask
+        memory_bank = memory_bank.repeat(beam_size, 1, 1)  # [batch * beam_size, max_src_len, memory_bank_size]
+        src_mask = src_mask.repeat(beam_size, 1)  # [batch * beam_size, src_seq_len]
+        src_oov = src_oov.repeat(self.beam_size, 1)  # [batch * beam_size, src_seq_len]
+        decoder_state = decoder_init_state.repeat(1, self.beam_size, 1)  # [dec_layers, batch_size * beam_size, decoder_size]
 
-        # store a sequence object to each TopN_heap in partial sequences with initial input, initial states, etc.
-        # partial_sequences, a list of topN heaps, len=batch_size
-        for batch_i in range(batch_size):
-            seq = Sequence(
-                batch_idx=batch_i,
-                word_idx_list=[decoder_init_input[batch_i]],
-                decoder_state=decoder_init_state[:, batch_i, :].unsqueeze(1),  # [dec_layers, 1, decoder_size]
-                memory_bank=memory_bank[batch_i].unsqueeze(0),  # [1, src_len, memory_bank_size]
-                src_mask=src_mask[batch_i].unsqueeze(0),  # [1, src_len]
-                src_oov=src_oov[batch_i].unsqueeze(0),  # [1, src_len]
-                oov_list=oov_lists[batch_i],
-                log_probs=[],
-                score=0.0,
-                context=context[batch_i].unsqueeze(0),  # [1, memory_bank_size]
-                coverage=coverage[batch_i].unsqueeze(0) if self.coverage_attn else None,  # [1, src_len]
-                attn_dist=[]
-            )
-            partial_sequences[batch_i].push(seq)
+        beam_list = [Beam(beam_size, n_best=beam_size,
+                                    cuda=self.cuda,
+                                    global_scorer=self.global_scorer,
+                                    pad=self.pad_idx,
+                                    eos=self.eos_idx,
+                                    bos=self.bos_idx)
+                for __ in range(batch_size)]
+
+        # Help functions for working with beams and batches
+        def var(a):
+            return torch.tensor(a, requires_grad=False)
 
         '''
         Run beam search.
         '''
         for t in range(1, self.max_sequence_length + 1):
-            # the total number of partial sequences of all the batches
-            num_partial_sequences = sum([len(batch_seqs) for batch_seqs in partial_sequences])
-            if num_partial_sequences == 0:
-                # We have run out of partial candidates; often happens when beam_size is small
+            if all((b.done() for b in beam_list)):
                 break
 
-            # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_idx2batch_idx, flattened_idx_map, y_t_flattened, decoder_state_flattened, memory_bank_flattened, src_mask_flattened, src_oov_flattened, context_flattened, coverage_flattened, oov_list_flattened = self.sequence_to_batch(partial_sequences)
-            # seq_idx2batch_idx: [list of batch idx of seq in topN_heap_1, list of batch idx of seq in topN_heap_2, ...]
-            # flattened_idx_map: [list of seq_id in topN_heap_1, list of seq_id in topN_heap_2, ...], seq_id increment from 0 at the first seq in first batch up to the end
+            # Construct batch x beam_size nxt words.
+            # Get all the pending current beam words and arrange for forward.
+            # b.get_current_tokens(): [beam_size]
+            # torch.stack([ [beam of batch 1], [beam of batch 2], ... ]) -> [batch, beam]
+            # after transpose -> [beam, batch]
+            # After flatten, it becomes
+            # [batch_1_beam_1, batch_2_beam_1,..., batch_N_beam_1, batch_1_beam_2, ..., batch_N_beam_2, ...]
+            # this match the dimension of hidden state
+            decoder_input = var(torch.stack([b.get_current_tokens() for b in beam_list])
+                      .t().contiguous().view(-1))
+            # decoder_input: [batch_size * beam_size]
 
-            # Run one-step generation
+            # Turn any copied words to UNKS
+            if self.copy_attn:
+                decoder_input = decoder_input.masked_fill(
+                    decoder_input.gt(self.model.vocab_size - 1), 0)
+
+            # run one step of decoding
             # [flattened_batch, vocab_size], [dec_layers, flattened_batch, decoder_size], [flattened_batch, memory_bank_size], [flattened_batch, src_len], [flattened_batch, src_len]
-            decoder_dist, h_t, context, attn_dist, _, coverage = \
-                self.model.decoder(y_t_flattened, decoder_state_flattened, memory_bank_flattened, src_mask_flattened, context_flattened, max_num_oov, src_oov_flattened, coverage_flattened)
-
+            decoder_dist, decoder_state, context, attn_dist, _, coverage = \
+                self.model.decoder(decoder_input, decoder_state, memory_bank, src_mask, max_num_oov, src_oov, coverage)
             log_decoder_dist = torch.log(decoder_dist + EPS)
 
-            top_k_probs, top_k_word_indices = log_decoder_dist.data.topk(self.beam_size, dim=-1) # [flattened_batch, beam_size]
+            # Compute a vector of batch x beam word scores
+            log_decoder_dist = log_decoder_dist.view(beam_size, batch_size, -1)  # [beam_size, batch_size, vocab_size]
+            attn_dist = attn_dist.view(beam_size, batch_size, -1)  # [beam_size, batch_size, src_seq_len]
 
-            '''
-            # (batch_size * beam_size, 1, src_len) -> (batch_size * beam_size, src_len)
-            if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
-                attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
-            else:
-                attn_weights = attn_weights.squeeze(1)
-            '''
+            # Advance each beam
+            for batch_idx, beam in enumerate(beam_list):
+                beam.advance(log_decoder_dist[:, batch_idx], attn_dist[:, batch_idx, src_lens[batch_idx]])
+                decoder_state = self.beam_decoder_state_update(batch_idx, beam.get_current_origin(), decoder_state)
 
-            '''
-            # tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, hyp_seq_size, trg_hidden_dim), squeeze the first dim
-            if isinstance(new_dec_hiddens, tuple):
-                new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
-                new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
-                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
-            # convert to a list of hidden state for each beam, with dimension [hidden_dim]
-            '''
+        # Extract sentences from beam.
+        result_dict = self._from_beam(beam_list)
+        result_dict['batch_size'] = batch_size
+        return result_dict
 
-            # For each partial sequence, push it to the TopN heap of the corresponding batch
-            for batch_i in range(batch_size):
-                num_new_hyp_in_batch = 0
-                new_partial_sequences = TopN_heap(self.beam_size)
+    def _from_beam(self, beam_list):
+        ret = {"predictions": [], "scores": [], "attention": []}
+        for b in beam_list:
+            n_best = self.beam_size
+            scores, ks = b.sort_finished(minium=n_best)
+            hyps, attn = [], []
+            # Collect all the decoded sentences in to hyps (list of list of idx) and attn (list of tensor)
+            for i, (times, k) in enumerate(ks[:n_best]):
+                # Get the corresponding decoded sentence, and also the attn dist [seq_len, memory_bank_size].
+                hyp, att = b.get_hyp(times, k)
+                hyps.append(hyp)
+                attn.append(att)
+            ret["predictions"].append(hyps)  # 3d list of idx (zero dim tensor), with len [batch_size, n_best, output_seq_len]
+            ret['scores'].append(scores)  # a 2d list of zero dim tensor, with len [batch_size, n_best]
+            ret["attention"].append(attn)  # a 2d list of FloatTensor[output sequence length, src_len] , with len [batch_size, n_best]
+            # hyp[::-1]: a list of idx (zero dim tensor), with len = output sequence length
+            # torch.stack(attn): FloatTensor, with size: [output sequence length, src_len]
+        return ret
 
-                for partial_idx, partial_seq in enumerate(partial_sequences[batch_i].extract()):
-                    num_new_hyp = 0
-                    flattened_seq_idx = flattened_idx_map[batch_i][partial_idx]
+    def beam_decoder_state_update(self, batch_idx, beam_indices, decoder_state):
+        """
+        :param batch_idx: int
+        :param beam_indices: a long tensor of previous beam indices, size: [beam_size]
+        :param decoder_state: [dec_layers, flattened_batch_size, decoder_size]
+        :return:
+        """
+        decoder_layers, flattened_batch_size, decoder_size = list(decoder_state.size())
+        assert flattened_batch_size % self.beam_size == 0
+        original_batch_size = flattened_batch_size//self.beam_size
+        # select the hidden states of a particular batch -> [dec_layers, beam_size, decoder_size]
+        decoder_state_transformed = decoder_state.view(decoder_layers, self.beam_size, original_batch_size, decoder_size)[:, :, batch_idx]
+        # select the hidden states of the beams specified by the beam_indices -> [dec_layers, beam_size, decoder_size]
+        decoder_state_transformed.data.copy_(decoder_state_transformed.data.index_select(1, beam_indices))
+        return decoder_state_transformed
 
-                    # check each new beam and decide to add to hypotheses or completed list
-                    for beam_i in range(self.beam_size):
-                        word_idx = top_k_word_indices[flattened_seq_idx][beam_i]
+class GNMTGlobalScorer(object):
+    """
+    NMT re-ranking score from
+    "Google's Neural Machine Translation System" :cite:`wu2016google`
 
-                        # score=0 means this is the first word <BOS>, empty the sentence
-                        if partial_seq.score != 0:
-                            new_word_idx_list = copy.copy(partial_seq.word_idx_list)
-                        else:
-                            new_word_idx_list = []
-                        new_word_idx_list.append(word_idx)
+    Args:
+       alpha (float): length parameter
+       beta (float):  coverage parameter
+    """
 
-                        new_partial_seq = Sequence(
-                            batch_idx=partial_seq.batch_idx,
-                            word_idx_list=new_word_idx_list,
-                            decoder_state=h_t[:, flattened_seq_idx, :].unsqueeze(1),
-                            memory_bank=partial_seq.memory_bank,
-                            src_mask=partial_seq.src_mask,
-                            src_oov=partial_seq.src_oov,
-                            oov_list=partial_seq.oov_list,
-                            log_probs=copy.copy(partial_seq.log_probs),
-                            score=copy.copy(partial_seq.score),
-                            context=context[flattened_seq_idx].unsqueeze(0),
-                            coverage=coverage[flattened_seq_idx].unsqueeze(0) if self.coverage_attn else None,
-                            attn_dist=copy.copy(partial_seq.attn_dist)
-                        )
+    def __init__(self, alpha, beta, cov_penalty, length_penalty):
+        self.alpha = alpha
+        self.beta = beta
+        penalty_builder = penalties.PenaltyBuilder(cov_penalty, length_penalty)
+        # Term will be subtracted from probability
+        self.cov_penalty = penalty_builder.coverage_penalty()
+        # Probability will be divided by this
+        self.length_penalty = penalty_builder.length_penalty()
 
-                        # we have generated self.beam_size new hypotheses for current hyp, stop generating
-                        if num_new_hyp >= self.beam_size:
-                            break
+    def score(self, beam, logprobs):
+        """
+        Rescores all the prediction scores of a beam based on penalty functions
+        Return: normalized_probs, size: [beam_size]
+        """
+        normalized_probs = self.length_penalty(beam,
+                                               logprobs,
+                                               self.alpha)
+        if not beam.stepwise_penalty:
+            penalty = self.cov_penalty(beam,
+                                       beam.global_state["coverage"],
+                                       self.beta)
+            normalized_probs -= penalty
 
-                        '''
-                        if self.include_attn_dist:
-                            if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
-                                attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
-                                new_partial_seq.attn_dist.append((attn_weights[0][flattened_seq_id], attn_weights[1][flattened_seq_id]))
-                            else:
-                                new_partial_seq.attn_dist.append(attn_weights[flattened_seq_id])
-                        else:
-                            new_partial_seq.attn_dist = None
-                        '''
+        return normalized_probs
 
-                        if self.include_attn_dist:
-                            new_partial_seq.attn_dist.append(attn_dist[flattened_seq_idx].unsqueeze(0)) # [1, src_len]
+    def update_score(self, beam, attn):
+        """
+        Function to update scores of a Beam that is not finished
+        """
+        if "prev_penalty" in beam.global_state.keys():
+            beam.scores.add_(beam.global_state["prev_penalty"])
+            penalty = self.cov_penalty(beam,
+                                       beam.global_state["coverage"] + attn,
+                                       self.beta)
+            beam.scores.sub_(penalty)
 
-                        new_partial_seq.log_probs.append(log_decoder_dist[flattened_seq_idx][beam_i])
-                        new_partial_seq.score = new_partial_seq.score + log_decoder_dist[flattened_seq_idx][beam_i]
+    def update_global_state(self, beam):
+        """
+        Keeps the coverage vector as sum of attentions
+        """
+        if len(beam.prev_ks) == 1:
+            beam.global_state["prev_penalty"] = beam.scores.clone().fill_(0.0)  # [beam_size]
+            beam.global_state["coverage"] = beam.attn[-1]  # [beam_size, src_len]
+            self.cov_total = beam.attn[-1].sum(1)  # [beam_size], accumulate the penalty term for coverage
+        else:
+            self.cov_total += torch.min(beam.attn[-1],
+                                        beam.global_state['coverage']).sum(1)
+            beam.global_state["coverage"] = beam.global_state["coverage"] \
+                .index_select(0, beam.prev_ks[-1]).add(beam.attn[-1])  # accumulate coverage vector
 
-                        # if predict EOS, push it into complete_sequences
-                        if word_idx == self.eos_idx:
-                            if self.length_normalization_factor > 0:
-                                L = self.length_normalization_const
-                                length_penalty = (L + len(new_partial_seq.word_idx_list)) / (L + 1)
-                                new_partial_seq.score /= length_penalty ** self.length_normalization_factor
-                            complete_sequences[new_partial_seq.batch_idx].push(new_partial_seq)
-                        else:
-                            # print('Before pushing[%d]' % new_partial_sequences.size())
-                            # print(sorted([s.score for s in new_partial_sequences._data]))
-                            new_partial_sequences.push(new_partial_seq)
-                            # print('After pushing[%d]' % new_partial_sequences.size())
-                            # print(sorted([s.score for s in new_partial_sequences._data]))
-                            num_new_hyp += 1
-                            num_new_hyp_in_batch += 1
-
-                    # print('Finished no.%d partial sequence' % partial_id)
-                    # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
-                    # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
-
-                partial_sequences[batch_i] = new_partial_sequences
-
-                #print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
-                '''
-                # print-out for debug
-                print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_oov.cpu().data.numpy().tolist()]))
-                print('OOV list: \n\t %s' % str(partial_seq.oov_list))
-
-                for seq_id, seq in enumerate(new_partial_sequences._data):
-                    print('%d, score=%.5f : %s' % (seq_id, seq.score, str(seq.sentence)))
-
-                print('*' * 50)
-                '''
-
-            #print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (t, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
-
-            # print('Round=%d' % (current_len))
-            # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))
-            # for b_i in range(batch_size):
-            #     print('\t\tbatch %d, #(hyp seq)=%d' % (b_i, len(partial_sequences[b_i])))
-            # print('\t#(completed) = %d' % (sum([len(batch_heap) for batch_heap in complete_sequences])))
-            # for b_i in range(batch_size):
-            #     print('\t\tbatch %d, #(completed seq)=%d' % (b_i, len(complete_sequences[b_i])))
-
-        # If we have no complete sequences then fall back to the partial sequences.
-        # But never output a mixture of complete and partial sequences because a
-        # partial sequence could have a higher score than all the complete
-        # sequences.
-
-        # append all the partial_sequences to complete
-        # [complete_sequences[s.batch_id] for s in partial_sequences]
-        for batch_i in range(batch_size):
-            if len(complete_sequences[batch_i]) == 0:
-                complete_sequences[batch_i] = partial_sequences[batch_i].extract(sort=True)
-            complete_sequences[batch_i] = complete_sequences[batch_i].extract(sort=True)
-
-        return complete_sequences
+            prev_penalty = self.cov_penalty(beam,
+                                            beam.global_state["coverage"],
+                                            self.beta)
+            beam.global_state["prev_penalty"] = prev_penalty
 

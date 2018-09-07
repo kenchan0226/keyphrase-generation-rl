@@ -252,23 +252,21 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     # log loss, ppl, and time
                     #print("check point!")
                     #sys.stdout.flush()
+                    logging.info('Epoch: %d; batch idx: %d; total batches: %d' % (epoch, batch_i, total_batch))
                     logging.info(
-                        'Epoch: %d; total batches: %d; average training perplexity: %.3f; average validation perplexity: %.3f; best validation perplexity: %.3f' % (
-                            epoch, total_batch, current_train_ppl, current_valid_ppl, best_valid_ppl))
+                        'avg training ppl: %.3f; avg validation ppl: %.3f; best validation ppl: %.3f' % (
+                            current_train_ppl, current_valid_ppl, best_valid_ppl))
                     logging.info(
-                        'Epoch: %d; total batches: %d; average training loss: %.3f; average validation loss: %.3f; best validation loss: %.3f' % (
-                            epoch, total_batch, current_train_loss, current_valid_loss, best_valid_loss))
+                        'avg training loss: %.3f; avg validation loss: %.3f; best validation loss: %.3f' % (
+                            current_train_loss, current_valid_loss, best_valid_loss))
+                    '''
                     train_forward_time, train_loss_compute_time, train_backward_time = report_train_statistics.total_time()
                     valid_forward_time, valid_loss_compute_time, _ = valid_loss_stat.total_time()
-                    logging.info('Epoch: %d; total batches: %d; avg. training forward time: %.1f; avg. training loss compute time: %.1f; avg. training backward time: %.1f' % (
-                        epoch, total_batch, train_forward_time, train_loss_compute_time, train_backward_time
+                    logging.info('avg. training forward time: %.1f; avg. training loss compute time: %.1f; avg. training backward time: %.1f' % (
+                        train_forward_time, train_loss_compute_time, train_backward_time
                     ))
-                    print('Epoch: %d; total batches: %d; average training perplexity: %.3f; average validation perplexity: %.3f; best validation perplexity: %.3f' % (
-                            epoch, total_batch, current_train_ppl, current_valid_ppl, best_valid_ppl))
-                    sys.stdout.flush()
-                    '''
-                    logging.info('Epoch: %d; total batches: %d; avg. validation forward time: %.1f; avg. validation loss compute time: %.1f' % (
-                        epoch, total_batch, valid_forward_time, valid_loss_compute_time
+                    logging.info('avg. validation forward time: %.1f; avg. validation loss compute time: %.1f' % (
+                        valid_forward_time, valid_loss_compute_time
                     ))
                     '''
                     report_train_ppl.append(current_train_ppl)
@@ -280,13 +278,12 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                         logging.info('Have not increased for %d check points, early stop training' % num_stop_dropping)
                         early_stop_flag = True
                         break
-                    #sys.stdout.flush()
                     report_train_statistics.clear()
 
     # export the training curve
     train_valid_curve_path = opt.exp_path + '/train_valid_curve'
     export_train_and_valid_results(report_train_loss, report_valid_loss, report_train_ppl, report_valid_ppl, opt.checkpoint_interval, train_valid_curve_path)
-    logging.info('Overall average training loss: %.3f, ppl: %.3f' % (total_train_statistics.xent(), total_train_statistics.ppl()))
+    #logging.info('Overall average training loss: %.3f, ppl: %.3f' % (total_train_statistics.xent(), total_train_statistics.ppl()))
 
 def main(opt):
     try:

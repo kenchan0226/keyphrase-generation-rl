@@ -308,6 +308,7 @@ def predict_opts(parser):
     parser.add_argument('-model', required=True,
                        help='Path to model .pt file')
     parser.add_argument('-verbose', action="store_true", help="Whether to log the results of every individual samples")
+    parser.add_argument('-attn_debug', action="store_true", help="Whether to print attn for each word")
     #parser.add_argument('-present_kp_only', action="store_true", help="Only consider the keyphrases that present in the source text")
     parser.add_argument('-data', required=True,
                         help="""Path prefix to the "test.one2many.pt" file path from preprocess.py""")
@@ -318,6 +319,15 @@ def predict_opts(parser):
                        help='Beam size')
     parser.add_argument('-max_length', type=int, default=6,
                        help='Maximum prediction length.')
+    parser.add_argument('-length_penalty_factor', type=float, default=0.,
+                       help="""Google NMT length penalty parameter
+                            (higher = longer generation)""")
+    parser.add_argument('-coverage_penalty_factor', type=float, default=-0.,
+                       help="""Coverage penalty parameter""")
+    parser.add_argument('-length_penalty', default='none', choices=['none', 'wu', 'avg'],
+    help="""Length Penalty to use.""")
+    parser.add_argument('-coverage_penalty', default='none', choices=['none', 'wu', 'summary'],
+                       help="""Coverage Penalty to use.""")
 
     parser.add_argument('-gpuid', default=0, type=int,
                         help="Use CUDA on the selected device.")
