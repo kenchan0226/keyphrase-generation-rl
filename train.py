@@ -10,9 +10,10 @@ from torch.utils.data import DataLoader
 from pykp.model import Seq2SeqModel
 from torch.optim import Adam
 import pykp
-from beam_search import SequenceGenerator
+from sequence_generator import SequenceGenerator
 from evaluate import evaluate_loss
 import train_ml
+import train_rl
 from utils.statistics import Statistics
 from utils.report import export_train_and_valid_results
 from utils.time_log import time_since
@@ -186,6 +187,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 '''
             else:
                 # TODO: traing_rl
+                train_rl.train_one_batch(batch, model, optimizer_rl, opt)
                 '''
                 if epoch >= opt.rl_start_epoch:
                     loss_rl = train_rl(one2many_batch, model, optimizer_rl, generator, opt, reward_cache)
@@ -312,7 +314,14 @@ if __name__ == "__main__":
     opt.input_feeding = False
     opt.copy_input_feeding = False
 
-    opt.device = torch.device("cuda:%d" % opt.gpuid if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        if not opt.gpuid:
+            opt.gpuid = 0
+        opt.device = torch.device("cuda:%d" % opt.gpuid)
+    else:
+        opt.device = torch.device("cpu")
+        opt.gpuid = -1
+        print("CUDA is not available, fall back to CPU.")
 
     if opt.train_ml == opt.train_rl:
         raise ValueError("Either train with supervised learning or RL, but not both!")

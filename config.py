@@ -210,23 +210,30 @@ def train_opts(parser):
                         max_grad_norm""")
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
+    parser.add_argument('-loss_normalization', default="tokens", choices=['tokens', 'batches'],
+                        help="Normalize the cross-entropy loss by the number of tokens or batch size")
 
     # Learning options
     parser.add_argument('-train_ml', action="store_true", default=False,
                         help='Train with Maximum Likelihood or not')
     parser.add_argument('-train_rl', action="store_true", default=False,
                         help='Train with Reinforcement Learning or not')
+
+    # Reinforcement Learning options
+    parser.add_argument('-rl_method', default=0, type=int,
+                        help="""0: ori, 1: running average as baseline""")
+    parser.add_argument('-max_sample_length', default=6, type=int,
+                        help="The max length of sequence that can be sampled by the model")
+
     #parser.add_argument('-loss_scale', type=float, default=0.5,
     #                    help='A scaling factor to merge the loss of ML and RL parts: L_mixed = γ * L_rl + (1 − γ) * L_ml'
     #                         'The γ used by Metamind is 0.9984 in "A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION"'
     #                         'The α used by Google is 0.017 in "Google Translation": O_Mixed(θ) = α ∗ O_ML(θ) + O_RL(θ)'
     #                     )
-    parser.add_argument('-rl_method', default=0, type=int,
-                        help="""0: ori, 1: running average as baseline""")
-    parser.add_argument('-rl_start_epoch', default=2, type=int,
-                        help="""from which epoch rl training starts""")
-    parser.add_argument('-loss_normalization', default="tokens",  choices=['tokens', 'batches'],
-                        help="Normalize the cross-entropy loss by the number of tokens or batch size")
+
+    #parser.add_argument('-rl_start_epoch', default=2, type=int,
+    #                    help="""from which epoch rl training starts""")
+
 
 
     # GPU

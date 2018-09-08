@@ -266,7 +266,7 @@ def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_
         pred_dict = {}
         sentences_n_best = []
         for pred in pred_n_best:
-            sentence = [idx2word[int(idx.item())] if int(idx.item()) < vocab_size else oov[int(idx.item())] for idx in pred[:-1]]
+            sentence = [idx2word[int(idx.item())] if int(idx.item()) < vocab_size else oov[int(idx.item())-vocab_size] for idx in pred[:-1]]
             sentences_n_best.append(sentence)
         pred_dict['sentences'] = sentences_n_best  # a list of list of word, with len [n_best, out_seq_len]
         pred_dict['scores'] = score_n_best  # a list of zero dim tensor, with len [n_best]
@@ -289,7 +289,6 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                 sys.stdout.flush()
                 start_time = time.time()
             src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist = batch
-
             """
             src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
             src_lens: a list containing the length of src sequences for each batch, with len=batch
@@ -335,7 +334,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
 
                 # print out all the predicted keyphrases
                 verbose_print_out += '[All PREDICTIONs] #(valid)=%d, #(present)=%d, #(unique)=%d, #(all)=%d\n' % (
-                    sum(pred_str_is_valid), sum(pred_str_is_present), sum(pred_str_not_duplicate), len(pred_seq_list))
+                    sum(pred_str_is_valid), sum(pred_str_is_present), sum(pred_str_not_duplicate), len(pred_str_list))
                 for word_list, is_present in zip(pred_str_list, pred_str_is_present):
                     if is_present:
                         verbose_print_out += '\t\t[%s]' % ' '.join(word_list)

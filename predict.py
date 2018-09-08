@@ -1,5 +1,5 @@
 import torch
-from beam_search import SequenceGenerator
+from sequence_generator import BeamSearchSequenceGenerator
 import logging
 import config
 from pykp.io import KeyphraseDataset
@@ -30,7 +30,7 @@ def main(opt):
         logging.info('Time for loading the data and model: %.1f' % load_data_time)
 
         start_time = time.time()
-        generator = SequenceGenerator(model,
+        generator = BeamSearchSequenceGenerator(model,
                                       bos_idx=opt.word2idx[pykp.io.BOS_WORD],
                                       eos_idx=opt.word2idx[pykp.io.EOS_WORD],
                                       pad_idx=opt.word2idx[pykp.io.PAD_WORD],
@@ -42,7 +42,8 @@ def main(opt):
                                       length_penalty_factor=opt.length_penalty_factor,
                                       coverage_penalty_factor=opt.coverage_penalty_factor,
                                       length_penalty=opt.length_penalty,
-                                      coverage_penalty=opt.coverage_penalty
+                                      coverage_penalty=opt.coverage_penalty,
+                                      cuda=opt.gpuid > -1
                                       )
         evaluate_beam_search(generator, test_data_loader, opt)
         total_testing_time = time_since(start_time)
@@ -75,6 +76,7 @@ if __name__=='__main__':
         opt.device = torch.device("cuda:%d" % opt.gpuid)
     else:
         opt.device = torch.device("cpu")
+        opt.gpuid = -1
         print("CUDA is not available, fall back to CPU.")
 
     opt.exp = 'predict.' + opt.exp
@@ -100,7 +102,7 @@ if __name__=='__main__':
     if not os.path.exists(opt.pred_path):
         os.makedirs(opt.pred_path)
 
-    logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=False)
+    logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=True)
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 
