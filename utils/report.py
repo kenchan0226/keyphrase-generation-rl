@@ -29,7 +29,7 @@ def concat_float_list(list, delimiter=','):
 def plot_train_valid_curve(train_loss, valid_loss, plot_every, path, loss_label):
     #plt.ioff()
     title = "Training and validation %s for every %d iterations" % (loss_label.lower(), plot_every)
-    plt.figure(dpi=500)
+    plt.figure()
     plt.title(title)
     plt.xlabel("Checkpoints")
     plt.ylabel(loss_label)
