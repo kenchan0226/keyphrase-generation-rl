@@ -218,6 +218,8 @@ def train_opts(parser):
                         help='Train with Maximum Likelihood or not')
     parser.add_argument('-train_rl', action="store_true", default=False,
                         help='Train with Reinforcement Learning or not')
+    parser.add_argument('-one2many', action="store_true", default=False,
+                        help='If true, it will not split a sample into multiple src-keyphrase pairs')
 
     # Reinforcement Learning options
     parser.add_argument('-rl_method', default=0, type=int,
