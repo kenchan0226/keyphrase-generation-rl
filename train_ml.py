@@ -4,9 +4,11 @@ from utils.statistics import Statistics
 from utils.time_log import time_since
 import time
 
-def train_one_batch(one2one_batch, model, optimizer, opt):
-
-    src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = one2one_batch
+def train_one_batch(batch, model, optimizer, opt):
+    if opt.one2many:
+        src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask = batch
+    else:
+        src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
     """
     src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
     src_lens: a list containing the length of src sequences for each batch, with len=batch

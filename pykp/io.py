@@ -121,9 +121,19 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
         src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
 
-        # target_input: input to decoder, ends with <eos> and oovs are replaced with <unk>
+        # trg: a list of concatenated targets, the targets in a concatenated target are separated by a <eos>, oov replaced by UNK
+        # trg_oov: a list of concatenated targets, the targets in a concatenated target are separated by a <eos>, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
+        trg = []
+        trg_oov = []
+        for b in batches:
+            trg_concat = []
+            trg_oov_concat = []
+            for target, target_oov in zip(b['trg'], trg['trg_copy']):  # b['trg'] contains a list of targets for one source, each target is a list of indices
+                trg_concat += (target + [self.word2idx[EOS_WORD]])  # trg_concat = [target_1] + [EOS] + [target_2] + [EOS] + ...
+                trg_oov_concat += (target_oov + [self.word2idx[EOS_WORD]])
+            trg.append(trg_concat)
+            trg_oov.append(trg_oov_concat)
         #trg = [[t + [self.word2idx[EOS_WORD]] for t in b['trg']] for b in batches]
-        # target for copy model, ends with <eos>, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
         #trg_oov = [[t + [self.word2idx[EOS_WORD]] for t in b['trg_copy']] for b in batches]
 
         oov_lists = [b['oov_list'] for b in batches]
@@ -139,8 +149,10 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         # pad the src and target sequences with <pad> token and convert to LongTensor
         src, src_lens, src_mask = self._pad(src)
         src_oov, _, _ = self._pad(src_oov)
+        trg, trg_lens, trg_mask = self._pad(trg)
+        trg_oov, _, _ = self._pad(trg_oov)
 
-        return src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str
+        return src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask
 
 '''
 class KeyphraseDatasetTorchText(torchtext.data.Dataset):
