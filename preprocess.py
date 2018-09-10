@@ -94,7 +94,7 @@ def main(opt):
     word2idx, idx2word, token_freq_counter = build_vocab(tokenized_train_pairs)
 
     # building preprocessed training set for one2one training mode
-    train_one2one = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2one')
+    train_one2one = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2one', include_original=True)
     # a list of dict, with fields src, trg, src_oov, oov_dict, oov_list, etc.
 
     print("Dumping train one2one to disk: %s" % (opt.data_dir + '/train.one2one.pt'))
@@ -102,7 +102,7 @@ def main(opt):
     len_train_one2one = len(train_one2one)
     del train_one2one
     # building preprocessed training set for one2many training mode
-    train_one2many = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2many')
+    train_one2many = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True)
     print("Dumping train one2many to disk: %s" % (opt.data_dir + '/train.one2many.pt'))
     torch.save(train_one2many, open(opt.data_dir + '/train.one2many.pt', 'wb'))
     len_train_one2many = len(train_one2many)
