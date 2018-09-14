@@ -67,7 +67,7 @@ class Beam:
         :return:
         """
         hyp, attn = [], []
-        # iterate from output sequence length (with eos but not bos) - 1 to 0
+        # iterate from output sequence length (with eos but not bos) - 1 to 0f
         for j in range(len(self.prev_ks[:timestep]) -1, -1, -1):
             hyp.append(self.next_ys[j + 1][k])  # j+1 so that it will iterate from the <eos> token, and end before the <bos>
             attn.append(self.attn[j][k])  # since it does not has attn for bos, it will also iterate from the attn for <eos>
@@ -141,7 +141,7 @@ class Beam:
             while len(self.finished) < minimum:
                 global_scores = self.global_scorer.score(self, self.scores)
                 s = global_scores[i]
-                self.finished.append((s, len(self.next_ys)-1, i)) # score, length of sequence (including <bos>, <eos>) -1, beam_idx
+                self.finished.append((s, len(self.next_ys)-1, i)) # score, length of sequence (include eos but not bos), beam_idx
                 i += 1
 
         self.finished.sort(key=lambda a: -a[0])

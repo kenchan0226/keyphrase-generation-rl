@@ -13,7 +13,7 @@ import pykp
 from sequence_generator import SequenceGenerator
 from evaluate import evaluate_loss
 import train_ml
-import train_rl
+#import train_rl
 from utils.statistics import Statistics
 from utils.report import export_train_and_valid_results
 from utils.time_log import time_since
@@ -36,6 +36,9 @@ def process_opt(opt):
 
     if hasattr(opt, 'train_rl') and opt.train_rl:
         opt.exp += '.rl'
+
+    if hasattr(opt, 'one2many') and opt.one2many:
+        opt.exp += '.one2many'
 
     if hasattr(opt, 'copy_attention') and opt.copy_attention:
         opt.exp += '.copy'
@@ -187,7 +190,20 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 '''
             else:
                 # TODO: traing_rl
-                train_rl.train_one_batch(batch, model, optimizer_rl, opt)
+                generator = SequenceGenerator(model,
+                                              bos_idx=opt.word2idx[pykp.io.BOS_WORD],
+                                              eos_idx=opt.word2idx[pykp.io.EOS_WORD],
+                                              pad_idx=opt.word2idx[pykp.io.PAD_WORD],
+                                              max_sequence_length=opt.max_length,
+                                              copy_attn=opt.copy_attention,
+                                              coverage_attn=opt.coverage_attn,
+                                              length_penalty_factor=opt.length_penalty_factor,
+                                              coverage_penalty_factor=opt.coverage_penalty_factor,
+                                              length_penalty=opt.length_penalty,
+                                              coverage_penalty=opt.coverage_penalty,
+                                              cuda=opt.gpuid > -1
+                                              )
+                #train_rl.train_one_batch(batch, generator, optimizer_rl, opt)
                 '''
                 if epoch >= opt.rl_start_epoch:
                     loss_rl = train_rl(one2many_batch, model, optimizer_rl, generator, opt, reward_cache)

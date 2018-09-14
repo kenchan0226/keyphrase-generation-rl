@@ -45,7 +45,7 @@ def build_vocab(tokenized_src_trg_pairs):
             token_freq_counter.update(word_list)
 
     # Discard special tokens if already present
-    special_tokens = ['<pad>', '<bos>', '<eos>', '<unk>']
+    special_tokens = ['<pad>', '<bos>', '<eos>', '<unk>', '<sep>']
     num_special_tokens = len(special_tokens)
 
     for s_t in special_tokens:
@@ -185,7 +185,7 @@ if __name__ == "__main__":
     # data_dir should contains six files, train_src.txt, train_trg.txt, valid_src.txt, valid_trg.txt, test_src.txt, test_trg.txt
 
     parser.add_argument('-data_dir', required=True, help='The source file of the data')
-    config.preprocess_opts(parser)
+    config.vocab_opts(parser)
     #parser.add_argument('-vocab_size', default=50000, type=int, help='Max. number of words in vocab')
     #parser.add_argument('-max_unk_words', default=1000, type=int, help='Max. number of words in OOV vocab')
     opt = parser.parse_args()

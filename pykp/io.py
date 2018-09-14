@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Python File Template
+Built on the source code of seq2seq-keyphrase-pytorch: https://github.com/memray/seq2seq-keyphrase-pytorch
 """
 import codecs
 import inspect
@@ -13,9 +14,6 @@ from collections import defaultdict
 import numpy as np
 import sys
 
-__author__ = "Rui Meng"
-__email__ = "rui.meng@pitt.edu"
-
 #import torchtext
 import torch
 import torch.utils.data
@@ -24,16 +22,18 @@ PAD_WORD = '<pad>'
 UNK_WORD = '<unk>'
 BOS_WORD = '<bos>'
 EOS_WORD = '<eos>'
+SEP_WORD = '<sep>'
 DIGIT = '<digit>'
 
+
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2idx, idx2word, type='one2many'):
+    def __init__(self, examples, word2idx, idx2word, type='one2many', delimiter_type=0, load_train=True):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         assert type in ['one2one', 'one2many']
         if type == 'one2one':
             keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
         elif type == 'one2many':
-            keys = ['src', 'src_oov', 'oov_dict', 'oov_list', 'src_str', 'trg_str']
+            keys = ['src', 'src_oov', 'oov_dict', 'oov_list', 'src_str', 'trg_str', 'trg', 'trg_copy']
 
         filtered_examples = []
 
@@ -58,6 +58,11 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.id2xword = idx2word
         self.pad_idx = word2idx[PAD_WORD]
         self.type = type
+        if delimiter_type == 0:
+            self.delimiter = self.word2idx['.']
+        else:
+            self.delimiter = self.word2idx[EOS_WORD]
+        self.load_train = load_train
 
     def __getitem__(self, index):
         return self.examples[index]
@@ -96,7 +101,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         trg_oov = [b['trg_copy'] + [self.word2idx[EOS_WORD]] for b in batches]
 
         # extended src (unk words are replaced with temporary idx, e.g. 50000, 50001 etc.)
-        src_oov = [ b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
+        src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
         # src_oov = [[self.word2idx[BOS_WORD]] + b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
 
         oov_lists = [b['oov_list'] for b in batches]
@@ -121,18 +126,29 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
         src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
 
-        # trg: a list of concatenated targets, the targets in a concatenated target are separated by a <eos>, oov replaced by UNK
-        # trg_oov: a list of concatenated targets, the targets in a concatenated target are separated by a <eos>, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
-        trg = []
-        trg_oov = []
-        for b in batches:
-            trg_concat = []
-            trg_oov_concat = []
-            for target, target_oov in zip(b['trg'], trg['trg_copy']):  # b['trg'] contains a list of targets for one source, each target is a list of indices
-                trg_concat += (target + [self.word2idx[EOS_WORD]])  # trg_concat = [target_1] + [EOS] + [target_2] + [EOS] + ...
-                trg_oov_concat += (target_oov + [self.word2idx[EOS_WORD]])
-            trg.append(trg_concat)
-            trg_oov.append(trg_oov_concat)
+        batch_size = len(src)
+
+        # trg: a list of concatenated targets, the targets in a concatenated target are separated by a delimiter, oov replaced by UNK
+        # trg_oov: a list of concatenated targets, the targets in a concatenated target are separated by a delimiter, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
+        if self.load_train:
+            trg = []
+            trg_oov = []
+            for b in batches:
+                trg_concat = []
+                trg_oov_concat = []
+                trg_size = len(b['trg'])
+                assert len(b['trg']) == len(b['trg_copy'])
+                for trg_idx, (trg_phase, trg_phase_oov) in enumerate(zip(b['trg'], b['trg_copy'])):  # b['trg'] contains a list of targets for one source, each target is a list of indices
+                #for trg_idx, a in enumerate(zip(b['trg'], b['trg_copy'])):
+                    #trg_phase, trg_phase_oov = a
+                    if trg_idx == trg_size - 1:  # if this is the last keyphrase, end with <eos>
+                        trg_concat += trg_phase + [self.word2idx[EOS_WORD]]
+                        trg_oov_concat += trg_phase_oov + [self.word2idx[EOS_WORD]]
+                    else:
+                        trg_concat += trg_phase + [self.delimiter]  # trg_concat = [target_1] + [delimiter] + [target_2] + [delimiter] + ...
+                        trg_oov_concat += trg_phase_oov + [self.delimiter]
+                trg.append(trg_concat)
+                trg_oov.append(trg_oov_concat)
         #trg = [[t + [self.word2idx[EOS_WORD]] for t in b['trg']] for b in batches]
         #trg_oov = [[t + [self.word2idx[EOS_WORD]] for t in b['trg_copy']] for b in batches]
 
@@ -142,17 +158,22 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         src_str = [b['src_str'] for b in batches]
         trg_str = [b['trg_str'] for b in batches]
 
+        original_indices = list(range(batch_size))
+
         # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
-        seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str), key=lambda p: len(p[0]), reverse=True)
-        src, src_oov, oov_lists, src_str, trg_str = zip(*seq_pairs)
+        seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, original_indices), key=lambda p: len(p[0]), reverse=True)
+        src, src_oov, oov_lists, src_str, trg_str, original_indices = zip(*seq_pairs)
 
         # pad the src and target sequences with <pad> token and convert to LongTensor
         src, src_lens, src_mask = self._pad(src)
         src_oov, _, _ = self._pad(src_oov)
-        trg, trg_lens, trg_mask = self._pad(trg)
-        trg_oov, _, _ = self._pad(trg_oov)
+        if self.load_train:
+            trg, trg_lens, trg_mask = self._pad(trg)
+            trg_oov, _, _ = self._pad(trg_oov)
+        else:
+            trg, trg_oov, trg_lens, trg_mask = None, None, None, None
 
-        return src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask
+        return src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, original_indices
 
 '''
 class KeyphraseDatasetTorchText(torchtext.data.Dataset):

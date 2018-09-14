@@ -1,5 +1,5 @@
 import torch
-from sequence_generator import BeamSearchSequenceGenerator
+from sequence_generator import SequenceGenerator
 import logging
 import config
 from pykp.io import KeyphraseDataset
@@ -30,7 +30,7 @@ def main(opt):
         logging.info('Time for loading the data and model: %.1f' % load_data_time)
 
         start_time = time.time()
-        generator = BeamSearchSequenceGenerator(model,
+        generator = SequenceGenerator(model,
                                       bos_idx=opt.word2idx[pykp.io.BOS_WORD],
                                       eos_idx=opt.word2idx[pykp.io.EOS_WORD],
                                       pad_idx=opt.word2idx[pykp.io.PAD_WORD],

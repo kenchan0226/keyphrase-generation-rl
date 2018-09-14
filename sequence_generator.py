@@ -13,7 +13,7 @@ from beam import GNMTGlobalScorer
 
 EPS = 1e-8
 
-class BeamSearchSequenceGenerator(object):
+class SequenceGenerator(object):
     """Class to generate sequences from an image-to-text model."""
 
     def __init__(self,
@@ -30,7 +30,8 @@ class BeamSearchSequenceGenerator(object):
                  coverage_penalty_factor=0.0,
                  length_penalty='avg',
                  coverage_penalty='none',
-                 cuda=True
+                 cuda=True,
+                 n_best=None
                  ):
         """Initializes the generator.
 
@@ -63,6 +64,10 @@ class BeamSearchSequenceGenerator(object):
         self.copy_attn = copy_attn
         self.global_scorer = GNMTGlobalScorer(length_penalty_factor, coverage_penalty_factor, coverage_penalty, length_penalty)
         self.cuda = cuda
+        if n_best is None:
+            self.n_best = self.beam_size
+        else:
+            self.n_best = n_best
 
     def beam_search(self, src, src_lens, src_oov, src_mask, oov_lists, word2idx):
         """
@@ -87,7 +92,7 @@ class BeamSearchSequenceGenerator(object):
         decoder_init_state = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
 
         # init initial_input to be BOS token
-        decoder_init_input = src.new_ones((batch_size * beam_size, 1)) * word2idx[pykp.io.BOS_WORD]  # [batch_size*beam_size, 1]
+        decoder_init_input = src.new_ones((batch_size * beam_size, 1)) * self.bos_idx  # [batch_size*beam_size, 1]
 
         if self.coverage_attn:  # init coverage
             #coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, src_len]
@@ -101,7 +106,7 @@ class BeamSearchSequenceGenerator(object):
         src_oov = src_oov.repeat(self.beam_size, 1)  # [batch * beam_size, src_seq_len]
         decoder_state = decoder_init_state.repeat(1, self.beam_size, 1)  # [dec_layers, batch_size * beam_size, decoder_size]
 
-        beam_list = [Beam(beam_size, n_best=beam_size, cuda=self.cuda, global_scorer=self.global_scorer, pad=self.pad_idx, eos=self.eos_idx, bos=self.bos_idx) for _ in range(batch_size)]
+        beam_list = [Beam(beam_size, n_best=self.n_best, cuda=self.cuda, global_scorer=self.global_scorer, pad=self.pad_idx, eos=self.eos_idx, bos=self.bos_idx) for _ in range(batch_size)]
 
         # Help functions for working with beams and batches
         def var(a):
@@ -129,7 +134,7 @@ class BeamSearchSequenceGenerator(object):
             # Turn any copied words to UNKS
             if self.copy_attn:
                 decoder_input = decoder_input.masked_fill(
-                    decoder_input.gt(self.model.vocab_size - 1), 0)
+                    decoder_input.gt(self.model.vocab_size - 1), self.model.unk_idx)
 
             # run one step of decoding
             # [flattened_batch, vocab_size], [dec_layers, flattened_batch, decoder_size], [flattened_batch, memory_bank_size], [flattened_batch, src_len], [flattened_batch, src_len]
@@ -154,7 +159,7 @@ class BeamSearchSequenceGenerator(object):
     def _from_beam(self, beam_list):
         ret = {"predictions": [], "scores": [], "attention": []}
         for b in beam_list:
-            n_best = self.beam_size
+            n_best = self.n_best
             scores, ks = b.sort_finished(minimum=n_best)
             hyps, attn = [], []
             # Collect all the decoded sentences in to hyps (list of list of idx) and attn (list of tensor)
@@ -184,3 +189,78 @@ class BeamSearchSequenceGenerator(object):
         decoder_state_transformed = decoder_state.view(decoder_layers, self.beam_size, original_batch_size, decoder_size)[:, :, batch_idx]
         # select the hidden states of the beams specified by the beam_indices -> [dec_layers, beam_size, decoder_size]
         decoder_state_transformed.data.copy_(decoder_state_transformed.data.index_select(1, beam_indices))
+
+    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False):
+        # src, src_lens, src_oov, src_mask, oov_lists, word2idx
+        """
+        :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
+        :param src_lens: a list containing the length of src sequences for each batch, with len=batch, with oov words replaced by unk idx
+        :param src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
+        :param src_mask: a FloatTensor, [batch, src_seq_len]
+        :param oov_lists: list of oov words (idx2word) for each batch, len=batch
+        :param max_sample_length: The max length of sequence that can be sampled by the model
+        :param greedy: whether to sample the word with max prob at each decoding step
+        :return:
+        """
+        batch_size, max_src_len = list(src.size())
+        max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
+
+        # Encoding
+        memory_bank, encoder_final_state = self.model.encoder(src, src_lens)
+        assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
+        assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
+
+        # Init decoder state
+        decoder_state = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
+
+        if self.coverage_attn:
+            coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, max_src_seq]
+        else:
+            coverage = None
+
+        # init y_t to be BOS token
+        decoder_input = src.new_ones(batch_size) * self.bos_idx  # [batch_size]
+        sample_list = [{"prediction": [], "attention": [], "done": False} for _ in range(batch_size)]
+        log_selected_token_dist = []
+        prediction_all = src.new_ones(batch_size, max_sample_length) * self.pad_idx
+
+        for t in range(max_sample_length):
+            # Turn any copied words to UNKS
+            if self.copy_attn:
+                decoder_input = decoder_input.masked_fill(
+                    decoder_input.gt(self.model.vocab_size - 1), self.model.unk_idx)
+
+            # [batch, vocab_size], [dec_layers, batch, decoder_size], [batch, memory_bank_size], [batch, src_len], [batch, src_len]
+            decoder_dist, decoder_state, context, attn_dist, _, coverage = \
+                self.model.decoder(decoder_input, decoder_state, memory_bank, src_mask, max_num_oov, src_oov, coverage)
+
+            if greedy:  # greedy decoding, only use in self-critical
+                selected_token_dist, prediction = torch.max(decoder_dist, 1)
+                log_selected_token_dist.append(torch.log(selected_token_dist + EPS))
+            else:  # sampling according to the probability distribution from the decoder
+                prediction = torch.multinomial(decoder_dist, 1)  # [batch, 1]
+                # select the probability of sampled tokens, and then take log, size: [batch, 1], append to a list
+                log_selected_token_dist.append(torch.log(decoder_dist + EPS).gather(1, prediction))
+
+            for batch_idx, sample in enumerate(sample_list):
+                if not sample['done']:
+                    sample['prediction'].append(prediction[batch_idx][0])  # 0 dim tensor
+                    sample['attention'].append(attn_dist[batch_idx])  # [src_len] tensor
+                    if int(prediction[batch_idx][0].item()) == self.model.eos_idx:
+                        sample['done'] = True
+                else:
+                    prediction[batch_idx][0].fill_(self.pad_idx)
+
+            prediction_all[:, t] = prediction[:, 0]
+            decoder_input = prediction[:, 0]  # [batch]
+
+            if all((s['done'] for s in sample_list)):
+                break
+
+        log_selected_token_dist = torch.cat(log_selected_token_dist, dim=1)  # [batch, t]
+        assert log_selected_token_dist.size() == torch.Size([batch_size, t])
+        output_mask = torch.ne(prediction_all, self.pad_idx)[:, :t+1]  # [batch, t]
+        output_mask = output_mask.type(torch.FloatTensor)
+        assert output_mask.size() == log_selected_token_dist.size()
+
+        return sample_list, log_selected_token_dist, output_mask

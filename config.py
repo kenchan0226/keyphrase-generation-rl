@@ -132,7 +132,7 @@ def model_opts(parser):
 
 def vocab_opts(parser):
     # Dictionary Options
-    parser.add_argument('-vocab_size', type=int, default=50000,
+    parser.add_argument('-vocab_size', type=int, default=50001,
                         help="Size of the source vocabulary")
     # for copy model
     parser.add_argument('-max_unk_words', type=int, default=1000,
@@ -152,6 +152,15 @@ def train_opts(parser):
     parser.add_argument('-vocab', required=True,
                         help="""Path prefix to the "vocab.pt"
                         file path from preprocess.py""")
+
+    parser.add_argument('-custom_data_filename_suffix', action="store_true",
+                        help='')
+    parser.add_argument('-custom_vocab_filename_suffix', action="store_true",
+                        help='')
+    parser.add_argument('-vocab_filename_suffix', default='',
+                        help='')
+    parser.add_argument('-data_filename_suffix', default='',
+                        help='')
 
     parser.add_argument('-save_model', default='model',
                         help="""Model filename (the model will be saved as
@@ -226,6 +235,12 @@ def train_opts(parser):
                         help="""0: ori, 1: running average as baseline""")
     parser.add_argument('-max_sample_length', default=6, type=int,
                         help="The max length of sequence that can be sampled by the model")
+    parser.add_argument('-max_length', type=int, default=6,
+                        help='Maximum prediction length.')
+
+    # One2many options
+    parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
+                        help='If type is 0, use ; to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
 
     #parser.add_argument('-loss_scale', type=float, default=0.5,
     #                    help='A scaling factor to merge the loss of ML and RL parts: L_mixed = γ * L_rl + (1 − γ) * L_ml'
@@ -291,7 +306,7 @@ def train_opts(parser):
 
     parser.add_argument('-report_every', type=int, default=10,
                         help="Print stats at this interval.")
-    parser.add_argument('-exp', type=str, default="stackexchange",
+    parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
                         help="Path of experiment log/plot.")
@@ -324,6 +339,15 @@ def predict_opts(parser):
     parser.add_argument('-vocab', required=True,
                         help="""Path prefix to the "vocab.pt"
                             file path from preprocess.py""")
+    parser.add_argument('-custom_data_filename_suffix', action="store_true",
+                        help='')
+    parser.add_argument('-custom_vocab_filename_suffix', action="store_true",
+                        help='')
+    parser.add_argument('-vocab_filename_suffix', default='',
+                        help='')
+    parser.add_argument('-data_filename_suffix', default='',
+                        help='')
+
     parser.add_argument('-beam_size', type=int, default=50,
                        help='Beam size')
     parser.add_argument('-max_length', type=int, default=6,
@@ -360,8 +384,29 @@ def predict_opts(parser):
 
     parser.add_argument('-pred_path', type=str, default="pred/%s.%s",
                         help="Path of outputs of predictions.")
-    parser.add_argument('-exp', type=str, default="stackexchange",
+    parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
                         help="Path of experiment log/plot.")
+    parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
+                        help='If type is 0, use ; to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
 
+def post_predict_opts(parser):
+    parser.add_argument('-pred_file_path', type=str,
+                        help="Path of the prediction file.")
+    parser.add_argument('-src_file_path', type=str,
+                        help="Path of the source text file.")
+    parser.add_argument('-trg_file_path', type=str,
+                        help="Path of the target text file.")
+    parser.add_argument('-export_filtered_pred', action="store_true",
+                        help="Export the filtered predictions to a file or not")
+    parser.add_argument('-filtered_pred_path', type=str,
+                        help="Path of the folder for storing the filtered prediction")
+    parser.add_argument('-exp', type=str, default="kp20k",
+                        help="Name of the experiment for logging.")
+    parser.add_argument('-exp_path', type=str,
+                        help="Path of experiment log/plot.")
+    parser.add_argument('-disable_extra_one_word_filter', action="store_true",
+                        help="If False, it will only keep the first one-word prediction")
+    parser.add_argument('-disable_valid_filter', action="store_true",
+                        help="If False, it will remove all the invalid predictions")

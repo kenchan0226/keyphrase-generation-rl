@@ -17,38 +17,6 @@ from utils.string_helper import *
 
 #stemmer = PorterStemmer()
 
-def check_valid_keyphrases(str_list):
-    num_pred_seq = len(str_list)
-    is_valid = np.zeros(num_pred_seq, dtype=bool)
-    for i, word_list in enumerate(str_list):
-        keep_flag = True
-
-        if len(word_list) == 0:
-            keep_flag = False
-
-        for w in word_list:
-            if w == pykp.io.UNK_WORD or w == ',' or w == '.':
-                keep_flag = False
-
-        is_valid[i] = keep_flag
-
-    return is_valid
-
-
-def compute_extra_one_word_seqs_mask(str_list):
-    num_pred_seq = len(str_list)
-    mask = np.zeros(num_pred_seq, dtype=bool)
-    num_one_word_seqs = 0
-    for i, word_list in enumerate(str_list):
-        if len(word_list) == 1:
-            num_one_word_seqs += 1
-            if num_one_word_seqs > 1:
-                mask[i] = False
-                continue
-        mask[i] = True
-    return mask, num_one_word_seqs
-
-
 def evaluate_loss(data_loader, model, opt):
     model.eval()
     evaluation_loss_sum = 0.0
@@ -59,7 +27,7 @@ def evaluate_loss(data_loader, model, opt):
         for batch_i, batch in enumerate(data_loader):
             total_batch += 1
             if opt.one2many:
-                src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask = batch
+                src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
             else:
                 src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
 
@@ -92,44 +60,6 @@ def evaluate_loss(data_loader, model, opt):
     eval_loss_stat = Statistics(evaluation_loss_sum, total_trg_tokens, total_batch, forward_time=forward_time, loss_compute_time=loss_compute_time)
 
     return eval_loss_stat
-
-
-def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list):
-    """
-    :param src_str: stemmed word list of source text
-    :param keyphrase_str_list: stemmed list of word list
-    :return:
-    """
-
-    num_keyphrases = len(keyphrase_str_list)
-    is_present = np.zeros(num_keyphrases, dtype=bool)
-    not_duplicate = np.ones(num_keyphrases, dtype=bool)
-    keyphrase_set = set()
-
-    for i, keyphrase_word_list in enumerate(keyphrase_str_list):
-        if '_'.join(keyphrase_word_list) in keyphrase_set:
-            not_duplicate[i] = False
-        else:
-            not_duplicate[i] = True
-
-        # check if it appears in source text
-        for src_start_idx in range(len(src_str) - len(keyphrase_word_list) + 1):
-            match = True
-            for keyphrase_i, keyphrase_w in enumerate(keyphrase_word_list):
-                src_w = src_str[src_start_idx + keyphrase_i]
-                if src_w != keyphrase_w:
-                    match = False
-                    break
-            if match:
-                break
-
-        if match:
-            is_present[i] = True
-        else:
-            is_present[i] = False
-        keyphrase_set.add('_'.join(keyphrase_word_list))
-
-    return is_present, not_duplicate
 
 '''
 def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list):
@@ -203,68 +133,6 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
     return present_index
 '''
 
-
-def compute_match_result(trg_str_list, pred_str_list, type='exact'):
-    assert type in ['exact'], "Right now only support exact matching"
-    num_pred_str = len(pred_str_list)
-    num_trg_str = len(trg_str_list)
-    is_match = np.zeros(num_pred_str, dtype=bool)
-
-    for pred_idx, pred_word_list in enumerate(pred_str_list):
-        if type == 'exact':
-            is_match[pred_idx] = False
-            for trg_idx, trg_word_list in enumerate(trg_str_list):
-                if len(pred_word_list) != len(trg_word_list): # if length not equal, it cannot be a match
-                    continue
-                match = True
-                for pred_w, trg_w in zip(pred_word_list, trg_word_list):
-                    if pred_w != trg_w:
-                        match = False
-                        break
-                # If there is one exact match in the target, match succeeds, go the next prediction
-                if match:
-                    is_match[pred_idx] = True
-                    break
-    return is_match
-
-
-def prepare_classification_result_dict(precision_k, recall_k, f1_k, num_matches_k, num_predictions_k, num_targets_k, topk, is_present):
-    present_tag = "present" if is_present else "absent"
-    return {'precision@%d_%s' % (topk, present_tag): precision_k, 'recall@%d_%s' % (topk, present_tag): recall_k,
-            'f1_score@%d_%s' % (topk, present_tag): f1_k, 'num_matches@%d_%s' % (topk, present_tag): num_matches_k,
-            'num_predictions@%d_%s' % (topk, present_tag): num_predictions_k, 'num_targets@%d_%s' % (topk, present_tag): num_targets_k}
-
-def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, topk=5):
-    """
-    :param is_match: a boolean np array with size [num_predictions]
-    :param predicted_list: 
-    :param true_list: 
-    :param topk: 
-    :return: {'precision@%d' % topk: precision_k, 'recall@%d' % topk: recall_k, 'f1_score@%d' % topk: f1, 'num_matches@%d': num_matches}
-    """
-    assert is_match.shape[0] == num_predictions
-
-    if num_predictions > topk:
-        is_match = is_match[:topk]
-        num_predictions = topk
-
-    num_matches = sum(is_match)
-
-    precision_k, recall_k, f1_k = compute_classificatioon_metrics(num_matches, num_predictions, num_trgs)
-
-    return precision_k, recall_k, f1_k, num_matches, num_predictions
-
-def compute_classificatioon_metrics(num_matches, num_predictions, num_trgs):
-    precision = num_matches / num_predictions if num_predictions > 0 else 0.0
-    recall = num_matches / num_trgs if num_trgs > 0 else 0.0
-
-    if precision + recall > 0:
-        f1 = float(2 * (precision * recall)) / (precision + recall)
-    else:
-        f1 = 0.0
-    return precision, recall, f1
-
-
 def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_lists, eos_idx):
     batch_size = beam_search_result['batch_size']
     predictions = beam_search_result['predictions']
@@ -285,7 +153,7 @@ def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_
         pred_list.append(pred_dict)
     return pred_list
 
-def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
+def evaluate_beam_search(generator, one2many_data_loader, opt):
     score_dict_all = defaultdict(list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
     # file for storing the predicted keyphrases
     pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
@@ -299,7 +167,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                 print("Batch %d: Time for running beam search on %d batches : %.1f" % (batch_i+1, interval, time_since(start_time)))
                 sys.stdout.flush()
                 start_time = time.time()
-            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, _, _, _, _ = batch
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, _, _, _, _, original_idx_list = batch
             """
             src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
             src_lens: a list containing the length of src sequences for each batch, with len=batch
@@ -315,6 +183,11 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
             pred_list = preprocess_beam_search_result(beam_search_result, opt.idx2word, opt.vocab_size, oov_lists, opt.word2idx[pykp.io.EOS_WORD])
             # list of {"sentences": [], "scores": [], "attention": []}
 
+            # recover the original order in the dataset
+            seq_pairs = sorted(zip(original_idx_list, src_str_list, trg_str_2dlist, pred_list, oov_lists),
+                               key=lambda p: p[0])
+            original_idx_list, src_str_list, trg_str_2dlist, pred_list, oov_lists = zip(*seq_pairs)
+
             # Process every src in the batch
             for src_str, trg_str_list, pred, oov in zip(src_str_list, trg_str_2dlist, pred_list, oov_lists):
                 # src_str: a list of words; trg_str: a list of keyphrases, each keyphrase is a list of words
@@ -323,6 +196,152 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                 pred_str_list = pred['sentences']  # predicted sentences from a single src, a list of list of word, with len=[beam_size, out_seq_len]
                 pred_score_list = pred['scores']
                 pred_attn_list = pred['attention']
+
+                # output the predicted keyphrases to a file
+                if opt.one2many: # split the concated keyphrases into a list of keyphrases
+                    assert len(pred_str_list) == 1
+                    word_list = pred_str_list[0]
+                    tmp_pred_str_list = []
+                    tmp_word_list = []
+                    for word in word_list:
+                        if word != pykp.io.SEP_WORD:
+                            tmp_word_list.append(word)
+                        else:
+                            if len(tmp_word_list) > 0:
+                                tmp_pred_str_list.append(tmp_word_list)
+                                tmp_word_list = []
+                    if len(tmp_word_list) > 0:  # append the final keyphrase to the pred_str_list
+                        tmp_pred_str_list.append(tmp_word_list)
+                    pred_str_list = tmp_pred_str_list
+
+                pred_print_out = ''
+                for word_list_i, word_list in enumerate(pred_str_list):
+                    if word_list_i < len(pred_str_list) - 1:
+                        pred_print_out += '%s;' % ' '.join(word_list)
+                    else:
+                        pred_print_out += '%s' % ' '.join(word_list)
+                pred_print_out += '\n'
+                pred_output_file.write(pred_print_out)
+
+    pred_output_file.close()
+    print("done!")
+
+
+def evaluate_beam_search_one2many(generator, one2many_data_loader, opt):
+    score_dict_all = defaultdict(
+        list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
+    # file for storing the predicted keyphrases
+    pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
+    # debug
+    interval = 1000
+
+    with torch.no_grad():
+        start_time = time.time()
+        for batch_i, batch in enumerate(one2many_data_loader):
+            if (batch_i + 1) % interval == 0:
+                print("Batch %d: Time for running beam search on %d batches : %.1f" % (
+                batch_i + 1, interval, time_since(start_time)))
+                sys.stdout.flush()
+                start_time = time.time()
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, _, _, _, _, original_idx_list = batch
+            """
+            src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
+            src_lens: a list containing the length of src sequences for each batch, with len=batch
+            src_mask: a FloatTensor, [batch, src_seq_len]
+            src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
+            oov_lists: a list of oov words for each src, 2dlist
+            """
+            src = src.to(opt.device)
+            src_mask = src_mask.to(opt.device)
+            src_oov = src_oov.to(opt.device)
+
+            beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.word2idx)
+            pred_list = preprocess_beam_search_result(beam_search_result, opt.idx2word, opt.vocab_size, oov_lists,
+                                                      opt.word2idx[pykp.io.EOS_WORD])
+            # list of {"sentences": [], "scores": [], "attention": []}
+
+            # recover the original order in the dataset
+            seq_pairs = sorted(zip(original_idx_list, src_str_list, trg_str_2dlist, pred_list, oov_lists),
+                               key=lambda p: p[0])
+            original_idx_list, src_str_list, trg_str_2dlist, pred_list, oov_lists = zip(*seq_pairs)
+
+            # Process every src in the batch
+            for src_str, trg_str_list, pred, oov in zip(src_str_list, trg_str_2dlist, pred_list, oov_lists):
+                # src_str: a list of words; trg_str: a list of keyphrases, each keyphrase is a list of words
+                # pred_seq_list: a list of sequence objects, sorted by scores
+                # oov: a list of oov words
+                pred_str_list = pred[
+                    'sentences']  # predicted sentences from a single src, a list of list of word, with len=[beam_size, out_seq_len]
+                pred_score_list = pred['scores']
+                pred_attn_list = pred['attention']
+
+                # output the predicted keyphrases to a file
+                pred_print_out = ''
+                for word_list_i, word_list in enumerate(pred_str_list):
+                    if word_list_i < len(pred_str_list) - 1:
+                        pred_print_out += '%s;' % ' '.join(word_list)
+                    else:
+                        pred_print_out += '%s' % ' '.join(word_list)
+                pred_print_out += '\n'
+                pred_output_file.write(pred_print_out)
+
+    pred_output_file.close()
+    print("done!")
+
+
+'''
+def evaluate_beam_search_backup(generator, one2many_data_loader, opt, save_path=None):
+    score_dict_all = defaultdict(list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
+    # file for storing the predicted keyphrases
+    pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
+    # debug
+    interval = 1000
+
+    with torch.no_grad():
+        start_time = time.time()
+        for batch_i, batch in enumerate(one2many_data_loader):
+            if (batch_i + 1) % interval == 0:
+                print("Batch %d: Time for running beam search on %d batches : %.1f" % (batch_i+1, interval, time_since(start_time)))
+                sys.stdout.flush()
+                start_time = time.time()
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, _, _, _, _, original_idx_list = batch
+            """
+            src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
+            src_lens: a list containing the length of src sequences for each batch, with len=batch
+            src_mask: a FloatTensor, [batch, src_seq_len]
+            src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
+            oov_lists: a list of oov words for each src, 2dlist
+            """
+            src = src.to(opt.device)
+            src_mask = src_mask.to(opt.device)
+            src_oov = src_oov.to(opt.device)
+
+            beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.word2idx)
+            pred_list = preprocess_beam_search_result(beam_search_result, opt.idx2word, opt.vocab_size, oov_lists, opt.word2idx[pykp.io.EOS_WORD])
+            # list of {"sentences": [], "scores": [], "attention": []}
+
+            # recover the original order in the dataset
+            seq_pairs = sorted(zip(original_idx_list, src_str_list, trg_str_2dlist, pred_list, oov_lists), key=lambda p: p[0])
+            original_idx_list, src_str_list, trg_str_2dlist, pred_list, oov_lists = zip(*seq_pairs)
+
+            # Process every src in the batch
+            for src_str, trg_str_list, pred, oov in zip(src_str_list, trg_str_2dlist, pred_list, oov_lists):
+                # src_str: a list of words; trg_str: a list of keyphrases, each keyphrase is a list of words
+                # pred_seq_list: a list of sequence objects, sorted by scores
+                # oov: a list of oov words
+                pred_str_list = pred['sentences']  # predicted sentences from a single src, a list of list of word, with len=[beam_size, out_seq_len]
+                pred_score_list = pred['scores']
+                pred_attn_list = pred['attention']
+
+                # output the predicted keyphrases to a file
+                pred_print_out = ''
+                for word_list_i, word_list in enumerate(pred_str_list):
+                    if word_list_i < len(pred_str_list) - 1:
+                        pred_print_out += '%s;' % ' '.join(word_list)
+                    else:
+                        pred_print_out += '%s' % ' '.join(word_list)
+                pred_print_out += '\n'
+                pred_output_file.write(pred_print_out)
 
                 verbose_print_out = '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
 
@@ -335,11 +354,11 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                 # not_duplicate: boolean np array indicate
                 trg_str_is_present, trg_str_not_duplicate = check_present_and_duplicate_keyphrases(stemmed_src_str, stemmed_trg_str_list)
 
-                verbose_print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_list))
-                verbose_print_out += '\n'.join(
-                    ['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in
-                     zip(trg_str_list, trg_str_is_present)])
-                verbose_print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
+                #verbose_print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_list))
+                #verbose_print_out += '\n'.join(
+                #    ['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in
+                #     zip(trg_str_list, trg_str_is_present)])
+                #verbose_print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
 
                 # a pred_seq is invalid if len(processed_seq) == 0 or keep_flag and any word in processed_seq is UNK or it contains '.' or ','
                 pred_str_is_valid = check_valid_keyphrases(pred_str_list)
@@ -404,14 +423,6 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                     topk_range = [5, 10]
 
                     filtered_pred_str_list_present_and_absent += filtered_pred_str_list
-                    '''
-                    pred_print_out += '|%s:|' % present_tag
-                    for word_list_i, word_list in enumerate(filtered_pred_str_list):
-                        if word_list_i < len(filtered_pred_str_list) - 1:
-                            pred_print_out += '%s;' % ' '.join(word_list)
-                        else:
-                            pred_print_out += '%s' % ' '.join(word_list)
-                    '''
 
                     # A boolean np array indicates whether each prediction match the target after stemming
                     is_match = compute_match_result(trg_str_list=filtered_stemmed_trg_str_list, pred_str_list=filtered_stemmed_pred_str_list)
@@ -433,20 +444,16 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
                             score_dict_all[metric].append(result)
                             verbose_print_out += "%s: %.3f\n" % (metric, result)
 
+                        #print("Result of %s@%d" % (present_tag, topk))
+                        #print(results)
+
+                #print("Result dict all:")
+                #print(score_dict_all)
+
                 if opt.verbose:
                     logging.info(verbose_print_out)
                     #print(verbose_print_out)
                     #sys.stdout.flush()
-
-                # output the filtered keyphrases to a file
-                pred_print_out = ''
-                for word_list_i, word_list in enumerate(filtered_pred_str_list_present_and_absent):
-                    if word_list_i < len(filtered_pred_str_list_present_and_absent) - 1:
-                        pred_print_out += '%s;' % ' '.join(word_list)
-                    else:
-                        pred_print_out += '%s' % ' '.join(word_list)
-                pred_print_out += '\n'
-                pred_output_file.write(pred_print_out)
 
     pred_output_file.close()
 
@@ -477,8 +484,10 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, save_path=None):
 
     print('Time for writing log: %.1f' % time_since(start_time))
     sys.stdout.flush()
+'''
 
 if __name__ == '__main__':
+    pass
     '''
     src_str = ['this', 'is', 'a', 'short', 'paragraph', 'for', 'identifying', 'key', 'value', 'pairs', '.']
     keyphrase_str_list = [['short', 'paragraph'], ['short', 'paragraphs'], ['test', 'propose'], ['test', 'proposes']]
@@ -487,7 +496,7 @@ if __name__ == '__main__':
     print(not_duplicate)
     print(stemmed_keyphrase_str_list)
     '''
-
+    '''
     src_str_list = [['this', 'is', 'a', 'short', 'paragraph', 'for', 'identifying', 'key', 'value', 'pairs', '.'],
                     ['thanks', 'god', 'this', 'is', 'friday','.']]
     trg_str_2dlist = [[['short', 'paragraph'], ['short', 'paragraphs'], ['test', 'propose'], ['test', 'proposes'],
@@ -510,3 +519,4 @@ if __name__ == '__main__':
         pred_is_present, pred_not_duplicate = check_present_and_duplicate_keyphrases(stemmed_src, stemmed_pred_str_list)
         print(pred_is_present)
         print(pred_not_duplicate)
+    '''
