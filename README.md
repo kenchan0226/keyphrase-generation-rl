@@ -45,7 +45,10 @@ Please read the config.py for more details about the options.
 
 ## Testing
 Example of testing command:
+
 `python3 predict.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -pred_path pred/%s.%s -enc_layers 2 -batch_size 8 -beam_size 100 -copy_attention -model [path_to_saved_model]`
+After that, it create a predict.txt in the path specified by pred_path, e.g., pred/predict.kp20k.bi-directional.20180914-095220/predictions.txt.
+For each line in the prediction.txt contains all the predicted keyphrases for a source. The keyphrases are separated by ';'.
 
 ## TODO
 - [x] Beam Search
