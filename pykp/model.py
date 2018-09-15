@@ -35,7 +35,7 @@ class Seq2SeqModel(nn.Module):
         self.pad_idx_src = opt.word2idx[pykp.io.PAD_WORD]
         self.pad_idx_trg = opt.word2idx[pykp.io.PAD_WORD]
         self.bos_idx = opt.word2idx[pykp.io.BOS_WORD]
-        self.eos_token = opt.word2idx[pykp.io.EOS_WORD]
+        self.eos_idx = opt.word2idx[pykp.io.EOS_WORD]
         self.unk_idx = opt.word2idx[pykp.io.UNK_WORD]
 
         self.share_embeddings = opt.share_embeddings
@@ -141,12 +141,6 @@ class Seq2SeqModel(nn.Module):
         batch_size, max_src_len = list(src.size())
 
         # Encoding
-        '''
-        src_emb = self.embedding(src)
-        memory_bank, encoder_final_state = self.encoder(src_emb, src_lens)
-        assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
-        assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
-        '''
         memory_bank, encoder_final_state = self.encoder(src, src_lens)
         assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
         assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])

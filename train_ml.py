@@ -6,7 +6,7 @@ import time
 
 def train_one_batch(batch, model, optimizer, opt):
     if opt.one2many:
-        src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask = batch
+        src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
     else:
         src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
     """
