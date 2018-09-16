@@ -31,11 +31,11 @@ Command example 1 (one2one baseline):
 
 `python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml`
 
-Command example 2 (one2many baseline, concatenated all the predicted keyphrases for one src, keyphrases are separated by <sep> token):
+Command example 2 (one2many baseline, concatenated all the predicted keyphrases for one src, keyphrases are separated by `<sep>` token):
 
 `python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many_mode 1 -delimiter_type 0 -batch_size 8`
 
-Command example 3 (one2many baseline, reset the hidden state after the prediction of each keyphrase, keyphrases are separated by <sep> token):
+Command example 3 (one2many baseline, reset the hidden state after the prediction of each keyphrase, keyphrases are separated by `<eos>` token):
 
 `python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many_mode 1 -delimiter_type 1 -batch_size 8`
 
