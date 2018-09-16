@@ -23,7 +23,7 @@ def load_data_and_vocab(opt, load_train=True):
     logging.info("Loading train and validate data from '%s'" % opt.data)
 
     if load_train:  # load training dataset
-        if not opt.one2many:  # load one2one dataset
+        if opt.one2many_mode == 0:  # load one2one dataset
             if not opt.custom_data_filename_suffix:
                 train_one2one = torch.load(opt.data + '/train.one2one.pt', 'wb')
             else:

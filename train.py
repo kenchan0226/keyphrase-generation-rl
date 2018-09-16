@@ -37,8 +37,8 @@ def process_opt(opt):
     if hasattr(opt, 'train_rl') and opt.train_rl:
         opt.exp += '.rl'
 
-    if hasattr(opt, 'one2many') and opt.one2many:
-        opt.exp += '.one2many'
+    #if hasattr(opt, 'one2many') and opt.one2many:
+    #    opt.exp += '.one2many'
 
     if hasattr(opt, 'copy_attention') and opt.copy_attention:
         opt.exp += '.copy'

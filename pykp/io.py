@@ -59,7 +59,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.pad_idx = word2idx[PAD_WORD]
         self.type = type
         if delimiter_type == 0:
-            self.delimiter = self.word2idx['.']
+            self.delimiter = self.word2idx[SEP_WORD]
         else:
             self.delimiter = self.word2idx[EOS_WORD]
         self.load_train = load_train
@@ -138,7 +138,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                 trg_oov_concat = []
                 trg_size = len(b['trg'])
                 assert len(b['trg']) == len(b['trg_copy'])
-                for trg_idx, (trg_phase, trg_phase_oov) in enumerate(zip(b['trg'], b['trg_copy'])):  # b['trg'] contains a list of targets for one source, each target is a list of indices
+                for trg_idx, (trg_phase, trg_phase_oov) in enumerate(zip(b['trg'], b['trg_copy'])):  # b['trg'] contains a list of targets, each target is a list of indices
                 #for trg_idx, a in enumerate(zip(b['trg'], b['trg_copy'])):
                     #trg_phase, trg_phase_oov = a
                     if trg_idx == trg_size - 1:  # if this is the last keyphrase, end with <eos>

@@ -227,8 +227,10 @@ def train_opts(parser):
                         help='Train with Maximum Likelihood or not')
     parser.add_argument('-train_rl', action="store_true", default=False,
                         help='Train with Reinforcement Learning or not')
-    parser.add_argument('-one2many', action="store_true", default=False,
-                        help='If true, it will not split a sample into multiple src-keyphrase pairs')
+    #parser.add_argument('-one2many', action="store_true", default=False,
+    #                    help='If true, it will not split a sample into multiple src-keyphrase pairs')
+    parser.add_argument('-one2many_mode', type=int, default=0, choices=[0, 1, 2],
+                        help='0: no one2many, train all the keyphrases one by one; 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
 
     # Reinforcement Learning options
     parser.add_argument('-rl_method', default=0, type=int,
@@ -390,6 +392,7 @@ def predict_opts(parser):
                         help="Path of experiment log/plot.")
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
                         help='If type is 0, use ; to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
+
 
 def post_predict_opts(parser):
     parser.add_argument('-pred_file_path', type=str,

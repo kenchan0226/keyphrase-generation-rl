@@ -32,8 +32,7 @@ class Statistics:
 
     def xent(self):
         """ compute normalized cross entropy """
-        if self.n_tokens == 0:
-            print("error")
+        assert self.n.tokens > 0, "n_tokens must be larger than 0"
         return self.loss / self.n_tokens
 
     def ppl(self):

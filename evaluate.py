@@ -26,9 +26,9 @@ def evaluate_loss(data_loader, model, opt):
     with torch.no_grad():
         for batch_i, batch in enumerate(data_loader):
             total_batch += 1
-            if opt.one2many:
+            if opt.one2many_mode == 0:  # load one2one dataset
                 src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
-            else:
+            else:  # load one2many dataset
                 src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
 
             max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch

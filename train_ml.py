@@ -5,21 +5,24 @@ from utils.time_log import time_since
 import time
 
 def train_one_batch(batch, model, optimizer, opt):
-    if opt.one2many:
-        src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
-    else:
+    if opt.one2many_mode == 0: # load one2one data
         src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
-    """
-    src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
-    src_lens: a list containing the length of src sequences for each batch, with len=batch
-    src_mask: a FloatTensor, [batch, src_seq_len]
-    trg: a LongTensor containing the word indices of target sentences, [batch, trg_seq_len]
-    trg_lens: a list containing the length of trg sequences for each batch, with len=batch
-    trg_mask: a FloatTensor, [batch, trg_seq_len]
-    src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
-    trg_oov: a LongTensor containing the word indices of target sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
-    :return:
-    """
+        """
+        src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
+        src_lens: a list containing the length of src sequences for each batch, with len=batch
+        src_mask: a FloatTensor, [batch, src_seq_len]
+        trg: a LongTensor containing the word indices of target sentences, [batch, trg_seq_len]
+        trg_lens: a list containing the length of trg sequences for each batch, with len=batch
+        trg_mask: a FloatTensor, [batch, trg_seq_len]
+        src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
+        trg_oov: a LongTensor containing the word indices of target sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
+        """
+    else:  # load one2many data
+        src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
+        """
+        trg: LongTensor [batch, trg_seq_len], each target trg[i] contains the indices of a set of concatenated keyphrases, separated by opt.word2idx[pykp.io.SEP_WORD]
+        trg_oov: same as trg_oov, but all unk words are replaced with temporary idx, e.g. 50000, 50001 etc.
+        """
 
     max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
 
@@ -35,18 +38,26 @@ def train_one_batch(batch, model, optimizer, opt):
 
     optimizer.zero_grad()
 
-    start_time = time.time()
-    decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
-    forward_time = time_since(start_time)
+    if opt.one2many_mode == 0 or opt.one2many_mode == 1:
+        start_time = time.time()
+        decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
+        forward_time = time_since(start_time)
 
-    start_time = time.time()
-    if opt.copy_attention:  # Compute the loss using target with oov words
-        loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
-                         opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
-    else:  # Compute the loss using target without oov words
-        loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
-                                    opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
-    loss_compute_time = time_since(start_time)
+        start_time = time.time()
+        if opt.copy_attention:  # Compute the loss using target with oov words
+            loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
+                             opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
+        else:  # Compute the loss using target without oov words
+            loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
+                                        opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
+        loss_compute_time = time_since(start_time)
+
+    else:  # opt.one2many_mode == 2
+        forward_time = 0
+        loss_compute_time = 0
+        # TODO: a for loop to accumulate loss for each keyphrase
+        # TODO: meanwhile, accumulate the forward time and loss_compute time
+        pass
 
     total_trg_tokens = sum(trg_lens)
 
