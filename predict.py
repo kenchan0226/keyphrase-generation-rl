@@ -29,6 +29,11 @@ def main(opt):
         model = init_pretrained_model(opt)
         logging.info('Time for loading the data and model: %.1f' % load_data_time)
 
+        if opt.delimiter_type == 0:
+            delimiter_word = pykp.io.SEP_WORD
+        else:
+            delimiter_word = pykp.io.EOS_WORD
+
         start_time = time.time()
         generator = SequenceGenerator(model,
                                       bos_idx=opt.word2idx[pykp.io.BOS_WORD],
@@ -43,9 +48,10 @@ def main(opt):
                                       coverage_penalty_factor=opt.coverage_penalty_factor,
                                       length_penalty=opt.length_penalty,
                                       coverage_penalty=opt.coverage_penalty,
-                                      cuda=opt.gpuid > -1
+                                      cuda=opt.gpuid > -1,
+                                      n_best=opt.n_best
                                       )
-        evaluate_beam_search(generator, test_data_loader, opt)
+        evaluate_beam_search(generator, test_data_loader, opt, delimiter_word)
         total_testing_time = time_since(start_time)
         logging.info('Time for a complete testing: %.1f' % total_testing_time)
         print('Time for a complete testing: %.1f' % total_testing_time)
@@ -91,6 +97,9 @@ if __name__=='__main__':
             opt.exp += '.bi-directional'
     else:
         opt.exp += '.uni-directional'
+
+    if opt.n_best < 0:
+        opt.n_best = opt.beam_size
 
     # fill time into the name
     if opt.exp_path.find('%s') > 0:

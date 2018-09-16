@@ -242,7 +242,7 @@ def train_opts(parser):
 
     # One2many options
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
-                        help='If type is 0, use ; to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
+                        help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
 
     #parser.add_argument('-loss_scale', type=float, default=0.5,
     #                    help='A scaling factor to merge the loss of ML and RL parts: L_mixed = γ * L_rl + (1 − γ) * L_ml'
@@ -352,6 +352,8 @@ def predict_opts(parser):
 
     parser.add_argument('-beam_size', type=int, default=50,
                        help='Beam size')
+    parser.add_argument('-n_best', type=int, default=-1,
+                        help='Pick the top n_best sequences from beam_search, if n_best < 0, then n_best=beam_size')
     parser.add_argument('-max_length', type=int, default=6,
                        help='Maximum prediction length.')
     parser.add_argument('-length_penalty_factor', type=float, default=0.,
@@ -390,8 +392,12 @@ def predict_opts(parser):
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
                         help="Path of experiment log/plot.")
+    parser.add_argument('-one2many_mode', type=int, default=0, choices=[0, 1, 2],
+                        help='0: no one2many, train all the keyphrases one by one; 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
-                        help='If type is 0, use ; to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
+                        help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
+
+
 
 
 def post_predict_opts(parser):

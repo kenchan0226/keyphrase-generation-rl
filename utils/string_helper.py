@@ -4,18 +4,19 @@ stemmer = PorterStemmer()
 def prediction_to_sentence(prediction, idx2word, vocab_size, oov, eos_idx):
     """
     :param prediction: a list of 0 dim tensor
-    :return: a list of words
+    :return: a list of words, does not include the final EOS
     """
     sentence = []
-    for idx in prediction:
-        _idx = int(idx.item())  # convert zero dim tensor to int
-        if _idx == eos_idx:  # terminate the conversion if we see a <BOS>
+    for i, pred in enumerate(prediction):
+        _pred = int(pred.item())  # convert zero dim tensor to int
+        if i == len(prediction) - 1 and _pred == eos_idx:  # ignore the final EOS token
             break
-        if _idx < vocab_size:
-            word = idx2word[_idx]
+        if _pred < vocab_size:
+            word = idx2word[_pred]
         else:
-            word = oov[_idx - vocab_size]
+            word = oov[_pred - vocab_size]
         sentence.append(word)
+
     return sentence
 
 def stem_str_list(str_list):

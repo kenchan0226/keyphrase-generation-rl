@@ -198,7 +198,6 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
                 pred_score_list = pred['scores']
                 pred_attn_list = pred['attention']
 
-                # output the predicted keyphrases to a file
                 if opt.one2many_mode == 1:  # split the concated keyphrases into a list of keyphrases
                     all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
                     for word_list in pred_str_list:
@@ -206,6 +205,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
                         not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
                         pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
 
+                # output the predicted keyphrases to a file
                 pred_print_out = ''
                 for word_list_i, word_list in enumerate(pred_str_list):
                     if word_list_i < len(pred_str_list) - 1:
@@ -237,6 +237,7 @@ def split_concated_keyphrases(word_list, delimiter_word):
         tmp_pred_str_list.append(tmp_word_list)
     return tmp_pred_str_list
 
+'''
 def evaluate_beam_search_one2many(generator, one2many_data_loader, opt):
     score_dict_all = defaultdict(
         list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
@@ -297,7 +298,7 @@ def evaluate_beam_search_one2many(generator, one2many_data_loader, opt):
 
     pred_output_file.close()
     print("done!")
-
+'''
 
 '''
 def evaluate_beam_search_backup(generator, one2many_data_loader, opt, save_path=None):
