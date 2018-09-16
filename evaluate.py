@@ -14,6 +14,7 @@ from collections import defaultdict
 import os
 import sys
 from utils.string_helper import *
+from evaluate_prediction import check_duplicate_keyphrases
 
 #stemmer = PorterStemmer()
 
@@ -27,9 +28,9 @@ def evaluate_loss(data_loader, model, opt):
         for batch_i, batch in enumerate(data_loader):
             total_batch += 1
             if opt.one2many_mode == 0:  # load one2one dataset
-                src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
-            else:  # load one2many dataset
                 src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
+            else:  # load one2many dataset
+                src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
 
             max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
 
@@ -147,13 +148,13 @@ def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_
             sentence = prediction_to_sentence(pred, idx2word, vocab_size, oov, eos_idx)
             #sentence = [idx2word[int(idx.item())] if int(idx.item()) < vocab_size else oov[int(idx.item())-vocab_size] for idx in pred[:-1]]
             sentences_n_best.append(sentence)
-        pred_dict['sentences'] = sentences_n_best  # a list of list of word, with len [n_best, out_seq_len]
+        pred_dict['sentences'] = sentences_n_best  # a list of list of word, with len [n_best, out_seq_len], does not include tbe final <EOS>
         pred_dict['scores'] = score_n_best  # a list of zero dim tensor, with len [n_best]
         pred_dict['attention'] = attn_n_best  # a list of FloatTensor[output sequence length, src_len], with len = [n_best]
         pred_list.append(pred_dict)
     return pred_list
 
-def evaluate_beam_search(generator, one2many_data_loader, opt):
+def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<sep>'):
     score_dict_all = defaultdict(list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
     # file for storing the predicted keyphrases
     pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
@@ -193,26 +194,17 @@ def evaluate_beam_search(generator, one2many_data_loader, opt):
                 # src_str: a list of words; trg_str: a list of keyphrases, each keyphrase is a list of words
                 # pred_seq_list: a list of sequence objects, sorted by scores
                 # oov: a list of oov words
-                pred_str_list = pred['sentences']  # predicted sentences from a single src, a list of list of word, with len=[beam_size, out_seq_len]
+                pred_str_list = pred['sentences']  # predicted sentences from a single src, a list of list of word, with len=[beam_size, out_seq_len], does not include the final <EOS>
                 pred_score_list = pred['scores']
                 pred_attn_list = pred['attention']
 
                 # output the predicted keyphrases to a file
-                if opt.one2many: # split the concated keyphrases into a list of keyphrases
-                    assert len(pred_str_list) == 1
-                    word_list = pred_str_list[0]
-                    tmp_pred_str_list = []
-                    tmp_word_list = []
-                    for word in word_list:
-                        if word != pykp.io.SEP_WORD:
-                            tmp_word_list.append(word)
-                        else:
-                            if len(tmp_word_list) > 0:
-                                tmp_pred_str_list.append(tmp_word_list)
-                                tmp_word_list = []
-                    if len(tmp_word_list) > 0:  # append the final keyphrase to the pred_str_list
-                        tmp_pred_str_list.append(tmp_word_list)
-                    pred_str_list = tmp_pred_str_list
+                if opt.one2many_mode == 1:  # split the concated keyphrases into a list of keyphrases
+                    all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
+                    for word_list in pred_str_list:
+                        all_keyphrase_list += split_concated_keyphrases(word_list, delimiter_word)
+                        not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
+                        pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
 
                 pred_print_out = ''
                 for word_list_i, word_list in enumerate(pred_str_list):
@@ -226,6 +218,24 @@ def evaluate_beam_search(generator, one2many_data_loader, opt):
     pred_output_file.close()
     print("done!")
 
+
+def split_concated_keyphrases(word_list, delimiter_word):
+    """
+    :param word_list: word list of concated keyprhases, separated by a delimiter
+    :return: a list of keyphrases from a concated sequence, each keyphrase is a word list
+    """
+    tmp_pred_str_list = []
+    tmp_word_list = []
+    for word in word_list:
+        if word != delimiter_word:
+            tmp_word_list.append(word)
+        else:
+            if len(tmp_word_list) > 0:
+                tmp_pred_str_list.append(tmp_word_list)
+                tmp_word_list = []
+    if len(tmp_word_list) > 0:  # append the final keyphrase to the pred_str_list
+        tmp_pred_str_list.append(tmp_word_list)
+    return tmp_pred_str_list
 
 def evaluate_beam_search_one2many(generator, one2many_data_loader, opt):
     score_dict_all = defaultdict(
