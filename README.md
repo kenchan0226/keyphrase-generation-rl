@@ -27,8 +27,17 @@ Command:
 `python3 preprocess.py -data_dir data/[dataset]`
 
 ## Training
-Example of training command:
-`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -coverage_attn -train_ml`
+Command example 1 (one2one baseline):
+
+`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml`
+
+Command example 2 (one2many baseline, concatenated all the predicted keyphrases for one src, keyphrases are separated by <sep> token):
+
+`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many_mode 1 -delimiter_type 0 -batch_size 8`
+
+Command example 3 (one2many baseline, reset the hidden state after the prediction of each keyphrase, keyphrases are separated by <sep> token):
+
+`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many_mode 1 -delimiter_type 1 -batch_size 8`
 
 Some common options for the training script:
 ```
@@ -39,7 +48,8 @@ Some common options for the training script:
 -copy_attention, a flag for training a model with copy attention, we follow the copy attention in [See et al. 2017]
 -coverage_attn, a flag for training a model with coverage attention layer, we follow the coverage attention in [See et al. 2017]
 -train_ml, a flag for training a model using maximum likehood in a supervised learning setting.
--train_ml, a flag for training a model using reward in a reinforcement learning setting.
+-train_rl, a flag for training a model using reward in a reinforcement learning setting.
+-delimiter_type [type], only effective when -one2many_mode=1 or 2. If [type] = 0, SEP_WORD=<sep>, if [type] = 1, SEP_WORD=<eos>
 ```
 Please read the config.py for more details about the options.
 
