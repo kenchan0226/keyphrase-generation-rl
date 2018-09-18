@@ -149,6 +149,8 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                         trg_oov_concat += trg_phase_oov + [self.delimiter]
                 trg.append(trg_concat)
                 trg_oov.append(trg_oov_concat)
+        else:
+            trg, trg_oov = None, None
         #trg = [[t + [self.word2idx[EOS_WORD]] for t in b['trg']] for b in batches]
         #trg_oov = [[t + [self.word2idx[EOS_WORD]] for t in b['trg_copy']] for b in batches]
 
@@ -161,8 +163,14 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         original_indices = list(range(batch_size))
 
         # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
-        seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, original_indices), key=lambda p: len(p[0]), reverse=True)
-        src, src_oov, oov_lists, src_str, trg_str, original_indices = zip(*seq_pairs)
+        if self.load_train:
+            seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, original_indices),
+                               key=lambda p: len(p[0]), reverse=True)
+            src, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, original_indices = zip(*seq_pairs)
+        else:
+            seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, original_indices),
+                               key=lambda p: len(p[0]), reverse=True)
+            src, src_oov, oov_lists, src_str, trg_str, original_indices = zip(*seq_pairs)
 
         # pad the src and target sequences with <pad> token and convert to LongTensor
         src, src_lens, src_mask = self._pad(src)
@@ -171,7 +179,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             trg, trg_lens, trg_mask = self._pad(trg)
             trg_oov, _, _ = self._pad(trg_oov)
         else:
-            trg, trg_oov, trg_lens, trg_mask = None, None, None, None
+            trg_lens, trg_mask = None, None
 
         return src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, original_indices
 
