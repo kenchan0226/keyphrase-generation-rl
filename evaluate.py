@@ -49,10 +49,10 @@ def evaluate_loss(data_loader, model, opt):
             start_time = time.time()
             if opt.copy_attention:  # Compute the loss using target with oov words
                 loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
-                                            opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
+                                            opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, coverage_loss=False)
             else:  # Compute the loss using target without oov words
                 loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
-                                            opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
+                                            opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, coverage_loss=False)
             loss_compute_time = time_since(start_time)
 
             evaluation_loss_sum += loss.item()
@@ -202,8 +202,9 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
                     all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
                     for word_list in pred_str_list:
                         all_keyphrase_list += split_concated_keyphrases(word_list, delimiter_word)
-                        not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
-                        pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
+                        #not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
+                    #pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
+                    pred_str_list = all_keyphrase_list
 
                 # output the predicted keyphrases to a file
                 pred_print_out = ''
@@ -222,6 +223,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
 def split_concated_keyphrases(word_list, delimiter_word):
     """
     :param word_list: word list of concated keyprhases, separated by a delimiter
+    :param delimiter_word
     :return: a list of keyphrases from a concated sequence, each keyphrase is a word list
     """
     tmp_pred_str_list = []

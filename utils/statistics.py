@@ -10,6 +10,8 @@ class Statistics:
         assert type(loss) is float or type(loss) is int
         assert type(n_tokens) is int
         self.loss = loss
+        if math.isnan(loss):
+            raise ValueError("Loss is NaN")
         self.n_tokens = n_tokens
         self.n_batch = n_batch
         self.forward_time = forward_time
@@ -24,6 +26,8 @@ class Statistics:
             stat: another statistic object
         """
         self.loss += stat.loss
+        if math.isnan(stat.loss):
+            raise ValueError("Loss is NaN")
         self.n_tokens += stat.n_tokens
         self.n_batch += stat.n_batch
         self.forward_time += stat.forward_time
@@ -37,6 +41,7 @@ class Statistics:
 
     def ppl(self):
         """ compute normalized perplexity """
+        assert self.n_tokens > 0, "n_tokens must be larger than 0"
         return math.exp(min(self.loss / self.n_tokens, 100))
 
     def total_time(self):

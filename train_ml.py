@@ -3,8 +3,9 @@ from pykp.masked_loss import masked_cross_entropy
 from utils.statistics import Statistics
 from utils.time_log import time_since
 import time
+import math
 
-def train_one_batch(batch, model, optimizer, opt):
+def train_one_batch(batch, model, optimizer, opt, batch_i):
     if opt.one2many_mode == 0: # load one2one data
         src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
         """
@@ -47,10 +48,10 @@ def train_one_batch(batch, model, optimizer, opt):
         start_time = time.time()
         if opt.copy_attention:  # Compute the loss using target with oov words
             loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
-                             opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
+                             opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss)
         else:  # Compute the loss using target without oov words
             loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
-                                        opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage)
+                                        opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss)
         loss_compute_time = time_since(start_time)
 
     else:  # opt.one2many_mode == 2
@@ -61,6 +62,28 @@ def train_one_batch(batch, model, optimizer, opt):
         pass
 
     total_trg_tokens = sum(trg_lens)
+
+    if math.isnan(loss.item()):
+        print("Batch i: %d" % batch_i)
+        print("src")
+        print(src)
+        print(src_oov)
+        print(src_str)
+        print(src_lens)
+        print(src_mask)
+        print("trg")
+        print(trg)
+        print(trg_oov)
+        print(trg_str)
+        print(trg_lens)
+        print(trg_mask)
+        print("oov list")
+        print(oov_lists)
+        print("Decoder")
+        print(decoder_dist)
+        print(h_t)
+        print(attention_dist)
+        raise ValueError("Loss is NaN")
 
     if opt.loss_normalization == "tokens": # use number of target tokens to normalize the loss
         normalization = total_trg_tokens

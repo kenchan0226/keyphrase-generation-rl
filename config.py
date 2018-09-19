@@ -117,6 +117,8 @@ def model_opts(parser):
                         help='Train a coverage attention layer.')
     parser.add_argument('-lambda_coverage', type=float, default=1,
                         help='Lambda value for coverage by See et al.')
+    parser.add_argument('-coverage_loss', action="store_true",
+                        help='whether to include coverage loss')
 
     # parser.add_argument('-context_gate', type=str, default=None,
     #                     choices=['source', 'target', 'both'],
@@ -239,6 +241,12 @@ def train_opts(parser):
                         help="The max length of sequence that can be sampled by the model")
     parser.add_argument('-max_length', type=int, default=6,
                         help='Maximum prediction length.')
+    parser.add_argument('-topk', type=int, default=10,
+                        help='The only pick the top k predictions in reward.')
+    parser.add_argument('-reward_type', default='f1',
+                        choices=['f1', 'ndcg'],
+                        help="""Optimization method.""")
+
 
     # One2many options
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],

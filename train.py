@@ -13,7 +13,7 @@ import pykp
 from sequence_generator import SequenceGenerator
 from evaluate import evaluate_loss
 import train_ml
-#import train_rl
+import train_rl
 from utils.statistics import Statistics
 from utils.report import export_train_and_valid_results
 from utils.time_log import time_since
@@ -50,6 +50,11 @@ def process_opt(opt):
         opt.exp += '.bi-directional'
     else:
         opt.exp += '.uni-directional'
+
+    if opt.delimiter_type == 0:
+        opt.delimiter_word = pykp.io.SEP_WORD
+    else:
+        opt.delimiter_word = pykp.io.EOS_WORD
 
 
     # fill time into the name
@@ -176,7 +181,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             # Training
             if opt.train_ml:
-                batch_loss_stat, decoder_dist = train_ml.train_one_batch(batch, model, optimizer_ml, opt)
+                batch_loss_stat, decoder_dist = train_ml.train_one_batch(batch, model, optimizer_ml, opt, batch_i)
                 report_train_statistics.update(batch_loss_stat)
                 total_train_statistics.update(batch_loss_stat)
                 #logging.info("one_batch")
@@ -203,7 +208,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                               coverage_penalty=opt.coverage_penalty,
                                               cuda=opt.gpuid > -1
                                               )
-                #train_rl.train_one_batch(batch, generator, optimizer_rl, opt)
+                train_rl.train_one_batch(batch, generator, optimizer_rl, opt)
                 '''
                 if epoch >= opt.rl_start_epoch:
                     loss_rl = train_rl(one2many_batch, model, optimizer_rl, generator, opt, reward_cache)
