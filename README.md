@@ -47,18 +47,37 @@ Some common options for the training script:
 -exp_path [Path of experiment log/plot.], e.g., -exp_path exp/%s.%s, the %s will be filled by the value in -exp and timestamp
 -copy_attention, a flag for training a model with copy attention, we follow the copy attention in [See et al. 2017]
 -coverage_attn, a flag for training a model with coverage attention layer, we follow the coverage attention in [See et al. 2017]
+-coverage_loss, a flag for training a model with coverage loss in [See et al. 2017]
+-lambda_coverage [coefficient of coverage loss], a coefficient to control the importance of coverage loss, default is 1.
 -train_ml, a flag for training a model using maximum likehood in a supervised learning setting.
 -train_rl, a flag for training a model using reward in a reinforcement learning setting.
--delimiter_type [type], only effective when -one2many_mode=1 or 2. If [type] = 0, SEP_WORD=<sep>, if [type] = 1, SEP_WORD=<eos>
+-one2many_mode [mode], [mode]=0: no one2many, train all the keyphrases one by one; [mode]=1: concatenated the keyphrases by <sep>; [mode]=2: reset the inital state after each keyphrases.
+-delimiter_type [type], only effective when -one2many_mode=1 or 2. If [type] = 0, SEP_WORD=<sep>, if [type] = 1, SEP_WORD=<eos>. Default is 1.
 ```
 Please read the config.py for more details about the options.
 
 ## Testing
-Example of testing command:
+Examples of testing commands:
+
+First, run the predict.py to output all the predicted keyphrases to a text file.
 
 `python3 predict.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -pred_path pred/%s.%s -enc_layers 2 -batch_size 8 -beam_size 100 -copy_attention -model [path_to_saved_model]`
 After that, it create a predict.txt in the path specified by pred_path, e.g., pred/predict.kp20k.bi-directional.20180914-095220/predictions.txt.
 For each line in the prediction.txt contains all the predicted keyphrases for a source. The keyphrases are separated by ';'.
+
+Then, run the evaluate_prediction.py to compute the evaluation metric
+`python3 evaluate_prediction.py -pred_file_path pred/predict.kp20k.bi-directional.20180916-152826/predictions.txt -src_file_path data/kp20k/test_src.txt -trg_file_path data/kp20k/test_trg.txt -exp_path exp/predict.kp20k.bi-directional.20180916-152826 -filtered_pred_path pred/predict.kp20k.bi-directional.20180916-152826 -exp kp20k -export_filtered_pred`
+
+The options for evaluate_prediction.py:
+```
+-pred_file_path [path of the file exported by predict.py]
+-src_file_path [path of the source file in the dataset], e.g., data/kp20k/test_src.txt
+-trg_file_path [path of the target file in the dataset], e.g., data/kp20k/test_trg.txt
+-exp_path [path for experiment log, which includes all the evaluation results]
+-exp [Name of the experiment for logging.], e.g., kp20k
+-export_filtered_pred, a flag for exporting all the filtered keyphrases to a file
+-filtered_pred_path [path of the file that store the filtered keyphrases]
+```
 
 ## TODO
 - [x] Beam Search
