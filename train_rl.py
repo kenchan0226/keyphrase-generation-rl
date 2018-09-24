@@ -1,10 +1,122 @@
 import torch
-from utils.string_helper import *
-from evaluate_prediction import compute_match_result, compute_classification_metrics_at_k, check_duplicate_keyphrases, ndcg_at_k
-from evaluate import split_concated_keyphrases
 import numpy as np
 import pykp.io
 import torch.nn as nn
+from utils.statistics import RewardStatistics
+from utils.time_log import time_since
+import time
+from sequence_generator import SequenceGenerator
+from utils.report import export_train_and_valid_loss, export_train_and_valid_reward
+import sys
+import logging
+import os
+from evaluate import evaluate_reward
+from pykp.reward import sample_list_to_str_2dlist, compute_reward, compute_pg_loss
+
+EPS = 1e-8
+
+def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, opt):
+    total_batch = -1
+    early_stop_flag = False
+
+    report_train_reward_statistics = RewardStatistics()
+    total_train_reward_statistics = RewardStatistics()
+    report_train_reward = []
+    report_valid_reward = []
+    best_valid_reward = float('-inf')
+    num_stop_increasing = 0
+
+    if opt.train_from:  # opt.train_from:
+        #TODO: load the training state
+        raise ValueError("Not implemented the function of load from trained model")
+        pass
+
+    model.train()
+
+    for epoch in range(opt.start_epoch, opt.epochs+1):
+        if early_stop_flag:
+            break
+
+        # TODO: progress bar
+        # progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,total_examples=len(train_data_loader.dataset.examples))
+        for batch_i, batch in enumerate(train_data_loader):
+            total_batch += 1
+
+            generator = SequenceGenerator(model,
+                                          bos_idx=opt.word2idx[pykp.io.BOS_WORD],
+                                          eos_idx=opt.word2idx[pykp.io.EOS_WORD],
+                                          pad_idx=opt.word2idx[pykp.io.PAD_WORD],
+                                          beam_size=1,
+                                          max_sequence_length=opt.max_length,
+                                          copy_attn=opt.copy_attention,
+                                          coverage_attn=opt.coverage_attn,
+                                          cuda=opt.gpuid > -1
+                                          )
+            batch_reward_stat, log_selected_token_dist = train_one_batch(batch, generator, optimizer_rl, opt)
+            report_train_reward_statistics.update(batch_reward_stat)
+            total_train_reward_statistics.update(batch_reward_stat)
+
+            # Checkpoint, decay the learning rate if validation loss stop dropping, apply early stopping if stop decreasing for several epochs.
+            # Save the model parameters if the validation loss improved.
+            if total_batch % 4000 == 0:
+                print("Epoch %d; batch: %d; total batch: %d" % (epoch, batch_i, total_batch))
+                sys.stdout.flush()
+
+            if epoch >= opt.start_checkpoint_at:
+                if (opt.checkpoint_interval == -1 and batch_i == len(train_data_loader) - 1) or \
+                        (opt.checkpoint_interval > -1 and total_batch > 1 and total_batch % opt.checkpoint_interval == 0):
+
+                    valid_reward_stat = evaluate_reward(valid_data_loader, generator, opt)
+                    model.train()
+                    current_valid_reward = valid_reward_stat.reward()
+                    print("Enter check point!")
+                    sys.stdout.flush()
+
+                    current_train_reward = report_train_reward_statistics.reward()
+                    current_train_pg_loss = report_train_reward_statistics.loss()
+
+                    if current_valid_reward > best_valid_reward:
+                        print("Valid reward increases")
+                        sys.stdout.flush()
+                        best_valid_reward = current_valid_reward
+                        num_stop_increasing = 0
+
+                        check_pt_model_path = os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (
+                            opt.exp, epoch, batch_i, total_batch) + '.model')
+                        torch.save(  # save model parameters
+                            model.state_dict(),
+                            open(check_pt_model_path, 'wb')
+                        )
+                        logging.info('Saving checkpoint to %s' % check_pt_model_path)
+                    else:
+                        print("Valid reward does not increase")
+                        sys.stdout.flush()
+                        num_stop_increasing += 1
+                        # decay the learning rate by a factor
+                        for i, param_group in enumerate(optimizer_ml.param_groups):
+                            old_lr = float(param_group['lr'])
+                            new_lr = old_lr * opt.learning_rate_decay
+                            if old_lr - new_lr > EPS:
+                                param_group['lr'] = new_lr
+
+                    logging.info('Epoch: %d; batch idx: %d; total batches: %d' % (epoch, batch_i, total_batch))
+                    logging.info(
+                        'avg training reward: %.4f; avg training loss: %.4f; avg validation reward: %.4f; best validation reward: %.4f' % (
+                            current_train_reward, current_train_pg_loss, current_valid_reward, best_valid_reward))
+
+                    report_train_reward.append(current_train_reward)
+                    report_valid_reward.append(current_valid_reward)
+
+                    if num_stop_increasing >= opt.early_stop_tolerance:
+                        logging.info('Have not increased for %d check points, early stop training' % num_stop_increasing)
+                        early_stop_flag = True
+                        break
+                    report_train_reward_statistics.clear()
+
+    # export the training curve
+    train_valid_curve_path = opt.exp_path + '/train_valid_curve'
+    export_train_and_valid_reward(report_train_reward, report_valid_reward, opt.checkpoint_interval, train_valid_curve_path)
+
 
 def train_one_batch(one2many_batch, generator, optimizer, opt):
     src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = one2many_batch
@@ -15,81 +127,73 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
     oov_lists: a list of oov words for each src, 2dlist
     """
+
+    # move data to GPU if available
+    src = src.to(opt.device)
+    src_mask = src_mask.to(opt.device)
+    src_oov = src_oov.to(opt.device)
+    # trg = trg.to(opt.device)
+    # trg_mask = trg_mask.to(opt.device)
+    # trg_oov = trg_oov.to(opt.device)
+
+    optimizer.zero_grad()
+
     eos_idx = opt.word2idx[pykp.io.EOS_WORD]
     delimiter_word = opt.delimiter_word
     batch_size = src.size(0)
     topk = opt.topk
     reward_type = opt.reward_type
 
+    generator.model.train()
+
     # sample a sequence
     # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
     # log_selected_token_dist: size: [batch, output_seq_len]
+    start_time = time.time()
     sample_list, log_selected_token_dist, output_mask = generator.sample(src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
+    sample_time = time_since(start_time)
+
     max_pred_seq_len = log_selected_token_dist.size(1)
 
-    if opt.baseline == 'self':
+    start_time = time.time()
+    if opt.pg_method == 0:
         # reward: an np array with size [batch_size]
-        reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, topk)
-        greedy_sample_list, _, _ = generator.sample(src, src_lens, src_oov, src_mask,
+        reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type, topk)
+        generator.model.eval()
+        with torch.no_grad():
+            greedy_sample_list, _, _ = generator.sample(src, src_lens, src_oov, src_mask,
                                                                              oov_lists, opt.max_length,
                                                                              greedy=True)
-        greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
+            greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
                                                     delimiter_word)
-        baseline_reward = compute_reward(trg_str_2dlist, greedy_str_2dlist, batch_size, reward_type, topk)
-        reward = reward - baseline_reward
-        reward = np.repeat(reward[:, np.newaxis], max_pred_seq_len)  # [batch_size, prediction_seq_len]
-        assert reward.shape == (batch_size, max_pred_seq_len)
-        q_value_sample = torch.from_numpy(reward).to(src.device)
-        q_value_sample.requires_grad = True
+        generator.model.train()
+        baseline = compute_reward(trg_str_2dlist, greedy_str_2dlist, batch_size, reward_type, topk)
+        baselined_reward = reward - baseline
+        baselined_reward = np.repeat(baselined_reward[:, np.newaxis], max_pred_seq_len, axis=1)  # [batch_size, prediction_seq_len]
+        assert baselined_reward.shape == (batch_size, max_pred_seq_len)
+        q_value_sample = torch.from_numpy(baselined_reward).type(torch.FloatTensor).to(src.device)
+        q_value_sample.requires_grad_(True)
+        final_reward = reward
 
+    q_estimate_compute_time = time_since(start_time)
+    #final_reward = reward[:, -1]  # Final reward for each batch, np.array: [batch_size]
+    final_reward_sum = final_reward.sum(0)
     pg_loss = compute_pg_loss(log_selected_token_dist, output_mask, q_value_sample)
+
+    start_time = time.time()
     pg_loss.backward()
-    grad_norm_before_clipping = nn.utils.clip_grad_norm_(generator.model.parameters(), opt.max_grad_norm)
+    backward_time = time_since(start_time)
+
+    if opt.max_grad_norm > 0:
+        grad_norm_before_clipping = nn.utils.clip_grad_norm_(generator.model.parameters(), opt.max_grad_norm)
+
     optimizer.step()
 
-    return
+    stat = RewardStatistics(final_reward_sum, pg_loss.item(), sample_time, q_estimate_compute_time, backward_time)
+    # reward=0.0, pg_loss=0.0, n_batch=0, sample_time=0, q_estimate_compute_time=0, backward_time=0
 
-def sample_list_to_str_2dlist(sample_list, oov_lists, idx2word, vocab_size, eos_idx, delimiter_word):
-    """Convert a list of sample dict to a 2d list of predicted keyphrases"""
-    pred_str_2dlist = []  #  a 2dlist, len(pred_str_2d_list)=batch_size, len(pred_str_2d_list[0])=
-    for sample, oov in zip(sample_list, oov_lists):
-        word_list = prediction_to_sentence(sample['prediction'], idx2word, vocab_size, oov, eos_idx)
-        pred_str_list = split_concated_keyphrases(word_list, delimiter_word)
-        pred_str_2dlist.append(pred_str_list)
-    return pred_str_2dlist
-
-def compute_self_critical_reward(sample_str_2dlist, greedy_str_2dlist):
-
-    return
-
-def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1', topk=10):
-    assert len(trg_str_2dlist) == batch_size
-    assert len(pred_str_2dlist) == batch_size
-    reward = np.zeros(batch_size)
-    for idx, (trg_str_list, pred_str_list) in enumerate(zip(trg_str_2dlist, pred_str_2dlist)):
-        # perform stemming
-        stemmed_trg_str_list = stem_str_list(trg_str_list)
-        stemmed_pred_str_list = stem_str_list(pred_str_list)
-
-        trg_str_filter = check_duplicate_keyphrases(stemmed_trg_str_list)  # a boolean nparray, true if not duplicated
-        pred_str_filter = check_duplicate_keyphrases(stemmed_pred_str_list)
-
-        unique_stemmed_trg_str_list = [word_list for word_list, is_keep in zip(stemmed_trg_str_list, trg_str_filter) if
-                                 is_keep]
-        unique_stemmed_pred_str_list = [word_list for word_list, is_keep in zip(stemmed_pred_str_list, pred_str_filter) if
-                                  is_keep]
-        num_unique_targets = len(unique_stemmed_trg_str_list)
-        num_unique_predictions = len(unique_stemmed_pred_str_list)
-        # boolean np array to indicate which prediction matches the target
-        is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list, pred_str_list=unique_stemmed_pred_str_list)
-        if reward_type == "f1":
-            precision_k, recall_k, f1_k, _, _ = compute_classification_metrics_at_k(is_match, num_unique_predictions, num_unique_targets, topk=topk)
-            reward[idx] = f1_k
-        else:
-            ndcg_k = ndcg_at_k(is_match, topk, method=1)
-            reward[idx] = ndcg_k
-    return reward
+    return stat, log_selected_token_dist.detach()
 
 '''
 def preprocess_sample_list(sample_list, idx2word, vocab_size, oov_lists, eos_idx):
@@ -97,17 +201,3 @@ def preprocess_sample_list(sample_list, idx2word, vocab_size, oov_lists, eos_idx
         sample['sentence'] = prediction_to_sentence(sample['prediction'], idx2word, vocab_size, oov, eos_idx)
     return
 '''
-
-def compute_pg_loss(log_likelihood, output_mask, q_val_sample):
-    """
-    :param log_likelihood: [batch_size, prediction_seq_len]
-    :param input_mask: [batch_size, prediction_seq_len]
-    :param q_val_sample: [batch_size, prediction_seq_len]
-    :return:
-    """
-    log_likelihood = log_likelihood.view(-1)  # [batch_size * prediction_seq_len]
-    output_mask = output_mask.view(-1)  # [batch_size * prediction_seq_len]
-    q_val_sample  # [batch_size * prediction_seq_len]
-    objective = -log_likelihood * output_mask * q_val_sample
-    objective = torch.sum(objective)/torch.sum(output_mask)
-    return objective

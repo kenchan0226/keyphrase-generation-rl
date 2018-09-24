@@ -1,7 +1,8 @@
 import math
 import time
 
-class Statistics:
+
+class LossStatistics:
     """
     Accumulator for loss staistics. Modified from OpenNMT
     """
@@ -20,7 +21,7 @@ class Statistics:
 
     def update(self, stat, update_n_src_words=False):
         """
-        Update statistics by suming values with another `Statistics` object
+        Update statistics by suming values with another `LossStatistics` object
 
         Args:
             stat: another statistic object
@@ -53,4 +54,48 @@ class Statistics:
         self.n_batch = 0
         self.forward_time = 0.0
         self.loss_compute_time = 0.0
+        self.backward_time = 0.0
+
+
+class RewardStatistics:
+    """
+    Accumulator for reward staistics.
+    """
+    def __init__(self, final_reward=0.0, pg_loss=0.0, n_batch=0, sample_time=0, q_estimate_compute_time=0, backward_time=0):
+        self.final_reward = final_reward
+        self.pg_loss = pg_loss
+        if math.isnan(pg_loss):
+            raise ValueError("Policy gradient loss is NaN")
+        self.n_batch = n_batch
+        self.sample_time = sample_time
+        self.q_estimate_compute_time = q_estimate_compute_time
+        self.backward_time = backward_time
+
+    def update(self, stat):
+        self.final_reward += stat.final_reward
+        if math.isnan(stat.pg_loss):
+            raise ValueError("Policy gradient loss is NaN")
+        self.pg_loss += stat.pg_loss
+        self.n_batch += stat.n_batch
+        self.sample_time += stat.sample_time
+        self.q_estimate_compute_time += stat.q_estimate_compute_time
+        self.backward_time += stat.backward_time
+
+    def reward(self):
+        assert self.n_batch > 0, "n_batch must be positive"
+        return self.final_reward / self.n_batch
+
+    def loss(self):
+        assert self.n_batch > 0, "n_batch must be positive"
+        return self.pg_loss / self.n_batch
+
+    def total_time(self):
+        return self.sample_time, self.q_estimate_compute_time, self.backward_time
+
+    def clear(self):
+        self.final_reward = 0.0
+        self.pg_loss = 0.0
+        self.n_batch = 0.0
+        self.sample_time = 0.0
+        self.q_estimate_compute_time = 0.0
         self.backward_time = 0.0

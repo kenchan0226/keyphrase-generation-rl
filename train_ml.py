@@ -1,9 +1,154 @@
 import torch.nn as nn
 from pykp.masked_loss import masked_cross_entropy
-from utils.statistics import Statistics
+from utils.statistics import LossStatistics
 from utils.time_log import time_since
+from evaluate import evaluate_loss
 import time
 import math
+import logging
+import torch
+import sys
+import os
+from utils.report import export_train_and_valid_loss
+
+EPS = 1e-8
+
+def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, opt):
+    '''
+    generator = SequenceGenerator(model,
+                                  eos_idx=opt.word2idx[pykp.io.EOS_WORD],
+                                  beam_size=opt.beam_size,
+                                  max_sequence_length=opt.max_sent_length
+                                  )
+    '''
+    logging.info('======================  Start Training  =========================')
+
+    total_batch = -1
+    early_stop_flag = False
+
+    total_train_loss_statistics = LossStatistics()
+    report_train_loss_statistics = LossStatistics()
+    report_train_ppl = []
+    report_valid_ppl = []
+    report_train_loss = []
+    report_valid_loss = []
+    best_valid_ppl = float('inf')
+    best_valid_loss = float('inf')
+    num_stop_dropping = 0
+
+    if opt.train_from:  # opt.train_from:
+        #TODO: load the training state
+        raise ValueError("Not implemented the function of load from trained model")
+        pass
+
+    model.train()
+
+    for epoch in range(opt.start_epoch, opt.epochs+1):
+        if early_stop_flag:
+            break
+
+        # TODO: progress bar
+        #progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,total_examples=len(train_data_loader.dataset.examples))
+
+        for batch_i, batch in enumerate(train_data_loader):
+            total_batch += 1
+
+            # Training
+            if opt.train_ml:
+                batch_loss_stat, decoder_dist = train_one_batch(batch, model, optimizer_ml, opt, batch_i)
+                report_train_loss_statistics.update(batch_loss_stat)
+                total_train_loss_statistics.update(batch_loss_stat)
+                #logging.info("one_batch")
+                #report_loss.append(('train_ml_loss', loss_ml))
+                #report_loss.append(('PPL', loss_ml))
+
+                # Brief report
+                '''
+                if batch_i % opt.report_every == 0:
+                    brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
+                '''
+
+            #progbar.update(epoch, batch_i, report_loss)
+
+            # Checkpoint, decay the learning rate if validation loss stop dropping, apply early stopping if stop decreasing for several epochs.
+            # Save the model parameters if the validation loss improved.
+            if total_batch % 4000 == 0:
+                print("Epoch %d; batch: %d; total batch: %d" % (epoch, batch_i, total_batch))
+                sys.stdout.flush()
+
+            if epoch >= opt.start_checkpoint_at:
+                if (opt.checkpoint_interval == -1 and batch_i == len(train_data_loader) - 1) or \
+                        (opt.checkpoint_interval > -1 and total_batch > 1 and total_batch % opt.checkpoint_interval == 0):
+                    if opt.train_ml:
+                        # test the model on the validation dataset for one epoch
+                        valid_loss_stat = evaluate_loss(valid_data_loader, model, opt)
+                        model.train()
+                        current_valid_loss = valid_loss_stat.xent()
+                        current_valid_ppl = valid_loss_stat.ppl()
+                        print("Enter check point!")
+                        sys.stdout.flush()
+
+                        current_train_ppl = report_train_loss_statistics.ppl()
+                        current_train_loss = report_train_loss_statistics.xent()
+
+                        # debug
+                        if math.isnan(current_valid_loss) or math.isnan(current_train_loss):
+                            logging.info(
+                                "NaN valid loss. Epoch: %d; batch_i: %d, total_batch: %d" % (epoch, batch_i, total_batch))
+                            exit()
+
+                        if current_valid_loss < best_valid_loss: # update the best valid loss and save the model parameters
+                            print("Valid loss drops")
+                            sys.stdout.flush()
+                            best_valid_loss = current_valid_loss
+                            best_valid_ppl = current_valid_ppl
+                            num_stop_dropping = 0
+
+                            check_pt_model_path = os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (
+                                opt.exp, epoch, batch_i, total_batch) + '.model')
+                            torch.save(  # save model parameters
+                                model.state_dict(),
+                                open(check_pt_model_path, 'wb')
+                            )
+                            logging.info('Saving checkpoint to %s' % check_pt_model_path)
+
+                        else:
+                            print("Valid loss does not drop")
+                            sys.stdout.flush()
+                            num_stop_dropping += 1
+                            # decay the learning rate by a factor
+                            for i, param_group in enumerate(optimizer_ml.param_groups):
+                                old_lr = float(param_group['lr'])
+                                new_lr = old_lr * opt.learning_rate_decay
+                                if old_lr - new_lr > EPS:
+                                    param_group['lr'] = new_lr
+
+                        # log loss, ppl, and time
+                        #print("check point!")
+                        #sys.stdout.flush()
+                        logging.info('Epoch: %d; batch idx: %d; total batches: %d' % (epoch, batch_i, total_batch))
+                        logging.info(
+                            'avg training ppl: %.3f; avg validation ppl: %.3f; best validation ppl: %.3f' % (
+                                current_train_ppl, current_valid_ppl, best_valid_ppl))
+                        logging.info(
+                            'avg training loss: %.3f; avg validation loss: %.3f; best validation loss: %.3f' % (
+                                current_train_loss, current_valid_loss, best_valid_loss))
+
+                        report_train_ppl.append(current_train_ppl)
+                        report_valid_ppl.append(current_valid_ppl)
+                        report_train_loss.append(current_train_loss)
+                        report_valid_loss.append(current_valid_loss)
+
+                        if num_stop_dropping >= opt.early_stop_tolerance:
+                            logging.info('Have not increased for %d check points, early stop training' % num_stop_dropping)
+                            early_stop_flag = True
+                            break
+                        report_train_loss_statistics.clear()
+
+    # export the training curve
+    train_valid_curve_path = opt.exp_path + '/train_valid_curve'
+    export_train_and_valid_loss(report_train_loss, report_valid_loss, report_train_ppl, report_valid_ppl, opt.checkpoint_interval, train_valid_curve_path)
+    #logging.info('Overall average training loss: %.3f, ppl: %.3f' % (total_train_loss_statistics.xent(), total_train_loss_statistics.ppl()))
 
 def train_one_batch(batch, model, optimizer, opt, batch_i):
     if opt.one2many_mode == 0: # load one2one data
@@ -19,7 +164,8 @@ def train_one_batch(batch, model, optimizer, opt, batch_i):
         trg_oov: a LongTensor containing the word indices of target sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
         """
     else:  # load one2many data
-        src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
+        src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
+        num_trgs = [len(trg_str_list) for trg_str_list in trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
         """
         trg: LongTensor [batch, trg_seq_len], each target trg[i] contains the indices of a set of concatenated keyphrases, separated by opt.word2idx[pykp.io.SEP_WORD]
              if opt.delimiter_type = 0, SEP_WORD=<sep>, if opt.delimiter_type = 1, SEP_WORD=<eos>
@@ -36,30 +182,31 @@ def train_one_batch(batch, model, optimizer, opt, batch_i):
     src_oov = src_oov.to(opt.device)
     trg_oov = trg_oov.to(opt.device)
 
-    model.train()
-
     optimizer.zero_grad()
 
-    if opt.one2many_mode == 0 or opt.one2many_mode == 1:
-        start_time = time.time()
+    #if opt.one2many_mode == 0 or opt.one2many_mode == 1:
+    start_time = time.time()
+    if opt.one2many_mode == 0:
         decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
-        forward_time = time_since(start_time)
+    else:
+        decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs)
+    forward_time = time_since(start_time)
 
-        start_time = time.time()
-        if opt.copy_attention:  # Compute the loss using target with oov words
-            loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
-                             opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss)
-        else:  # Compute the loss using target without oov words
-            loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
-                                        opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss)
-        loss_compute_time = time_since(start_time)
+    start_time = time.time()
+    if opt.copy_attention:  # Compute the loss using target with oov words
+        loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
+                         opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss)
+    else:  # Compute the loss using target without oov words
+        loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
+                                    opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss)
+    loss_compute_time = time_since(start_time)
 
-    else:  # opt.one2many_mode == 2
-        forward_time = 0
-        loss_compute_time = 0
-        # TODO: a for loop to accumulate loss for each keyphrase
-        # TODO: meanwhile, accumulate the forward time and loss_compute time
-        pass
+    #else:  # opt.one2many_mode == 2
+    #    forward_time = 0
+    #    loss_compute_time = 0
+    #    # TODO: a for loop to accumulate loss for each keyphrase
+    #    # TODO: meanwhile, accumulate the forward time and loss_compute time
+    #    pass
 
     total_trg_tokens = sum(trg_lens)
 
@@ -68,13 +215,13 @@ def train_one_batch(batch, model, optimizer, opt, batch_i):
         print("src")
         print(src)
         print(src_oov)
-        print(src_str)
+        print(src_str_list)
         print(src_lens)
         print(src_mask)
         print("trg")
         print(trg)
         print(trg_oov)
-        print(trg_str)
+        print(trg_str_2dlist)
         print(trg_lens)
         print(trg_mask)
         print("oov list")
@@ -107,6 +254,6 @@ def train_one_batch(batch, model, optimizer, opt, batch_i):
     optimizer.step()
 
     # construct a statistic object for the loss
-    stat = Statistics(loss.item(), total_trg_tokens, n_batch=1, forward_time=forward_time, loss_compute_time=loss_compute_time, backward_time=backward_time)
+    stat = LossStatistics(loss.item(), total_trg_tokens, n_batch=1, forward_time=forward_time, loss_compute_time=loss_compute_time, backward_time=backward_time)
 
     return stat, decoder_dist.detach()

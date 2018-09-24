@@ -3,7 +3,7 @@ import torch
 #from utils import Progbar
 #from pykp.metric.bleu import bleu
 from pykp.masked_loss import masked_cross_entropy
-from utils.statistics import Statistics
+from utils.statistics import LossStatistics, RewardStatistics
 import time
 from utils.time_log import time_since
 #from nltk.stem.porter import *
@@ -14,7 +14,7 @@ from collections import defaultdict
 import os
 import sys
 from utils.string_helper import *
-from evaluate_prediction import check_duplicate_keyphrases
+from pykp.reward import sample_list_to_str_2dlist, compute_reward
 
 #stemmer = PorterStemmer()
 
@@ -23,6 +23,8 @@ def evaluate_loss(data_loader, model, opt):
     evaluation_loss_sum = 0.0
     total_trg_tokens = 0
     total_batch = 0
+    loss_compute_time_total = 0.0
+    forward_time_total = 0.0
 
     with torch.no_grad():
         for batch_i, batch in enumerate(data_loader):
@@ -30,7 +32,9 @@ def evaluate_loss(data_loader, model, opt):
             if opt.one2many_mode == 0:  # load one2one dataset
                 src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
             else:  # load one2many dataset
-                src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, _ = batch
+                src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
+                num_trgs = [len(trg_str_list) for trg_str_list in
+                            trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
 
             max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
 
@@ -43,8 +47,12 @@ def evaluate_loss(data_loader, model, opt):
             trg_oov = trg_oov.to(opt.device)
 
             start_time = time.time()
-            decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
+            if opt.one2many_mode == 0:
+                decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
+            else:
+                decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs)
             forward_time = time_since(start_time)
+            forward_time_total += forward_time
 
             start_time = time.time()
             if opt.copy_attention:  # Compute the loss using target with oov words
@@ -54,13 +62,60 @@ def evaluate_loss(data_loader, model, opt):
                 loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
                                             opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, coverage_loss=False)
             loss_compute_time = time_since(start_time)
+            loss_compute_time_total += loss_compute_time
 
             evaluation_loss_sum += loss.item()
             total_trg_tokens += sum(trg_lens)
 
-    eval_loss_stat = Statistics(evaluation_loss_sum, total_trg_tokens, total_batch, forward_time=forward_time, loss_compute_time=loss_compute_time)
-
+    eval_loss_stat = LossStatistics(evaluation_loss_sum, total_trg_tokens, total_batch, forward_time=forward_time_total, loss_compute_time=loss_compute_time_total)
     return eval_loss_stat
+
+def evaluate_reward(data_loader, generator, opt):
+    """Return the avg. reward in the validation dataset"""
+    generator.model.eval()
+    final_reward_sum = 0.0
+    total_batch = 0
+    sample_time_total = 0.0
+
+    with torch.no_grad():
+        for batch_i, batch in enumerate(data_loader):
+            total_batch += 1
+            # load one2many dataset
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
+            num_trgs = [len(trg_str_list) for trg_str_list in
+                        trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
+
+            # move data to GPU if available
+            src = src.to(opt.device)
+            src_mask = src_mask.to(opt.device)
+            src_oov = src_oov.to(opt.device)
+            #trg = trg.to(opt.device)
+            #trg_mask = trg_mask.to(opt.device)
+            #trg_oov = trg_oov.to(opt.device)
+
+            eos_idx = opt.word2idx[pykp.io.EOS_WORD]
+            delimiter_word = opt.delimiter_word
+            batch_size = src.size(0)
+            topk = opt.topk
+            reward_type = opt.reward_type
+
+            start_time = time.time()
+            # sample a sequence
+            # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
+            sample_list, log_selected_token_dist, output_mask = generator.sample(src, src_lens, src_oov, src_mask,
+                                                                                 oov_lists, opt.max_length,
+                                                                                 greedy=False)
+            pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
+            sample_time = time_since(start_time)
+            sample_time_total += sample_time
+
+            final_reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type, topk) # np.array, [batch_size]
+
+            final_reward_sum += final_reward.sum(0)
+
+    eval_reward_stat = RewardStatistics(final_reward_sum, pg_loss=0, n_batch=total_batch, sample_time=sample_time_total)
+
+    return eval_reward_stat
 
 '''
 def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list):
@@ -219,25 +274,6 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
     pred_output_file.close()
     print("done!")
 
-
-def split_concated_keyphrases(word_list, delimiter_word):
-    """
-    :param word_list: word list of concated keyprhases, separated by a delimiter
-    :param delimiter_word
-    :return: a list of keyphrases from a concated sequence, each keyphrase is a word list
-    """
-    tmp_pred_str_list = []
-    tmp_word_list = []
-    for word in word_list:
-        if word != delimiter_word:
-            tmp_word_list.append(word)
-        else:
-            if len(tmp_word_list) > 0:
-                tmp_pred_str_list.append(tmp_word_list)
-                tmp_word_list = []
-    if len(tmp_word_list) > 0:  # append the final keyphrase to the pred_str_list
-        tmp_pred_str_list.append(tmp_word_list)
-    return tmp_pred_str_list
 
 '''
 def evaluate_beam_search_one2many(generator, one2many_data_loader, opt):

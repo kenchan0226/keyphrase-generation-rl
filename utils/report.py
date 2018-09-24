@@ -4,7 +4,18 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 
-def export_train_and_valid_results(train_loss, valid_loss, train_ppl, valid_ppl, plot_every, path):
+def export_train_and_valid_reward(train_reward, valid_reward, plot_every, path):
+    # Export the results to a csv file
+    labels = ['Training reward:,', 'Validation reward:,']
+    float_lists = [train_reward, valid_reward]
+    with open(path + '.csv', 'w') as result_csv:
+        for i in range(len(labels)):
+            result_csv.write(labels[i] + concat_float_list(float_lists[i], ',') + '\n')
+    # Export the plots to pdf file
+    plot_train_valid_curve(train_loss, valid_loss, plot_every, path, 'Reward')
+
+
+def export_train_and_valid_loss(train_loss, valid_loss, train_ppl, valid_ppl, plot_every, path):
     """
     :param train_loss: a list of float
     :param valid_loss: a list of float
@@ -50,4 +61,4 @@ if __name__ == '__main__':
 
     plot_every = 4000
     path = '../exp/debug/valid_train_curve'
-    export_train_and_valid_results(train_loss, valid_loss, train_ppl, valid_ppl, plot_every, path)
+    export_train_and_valid_loss(train_loss, valid_loss, train_ppl, valid_ppl, plot_every, path)

@@ -28,6 +28,7 @@ class Seq2SeqModel(nn.Module):
         self.dropout = opt.dropout
 
         self.bridge = opt.bridge
+        self.one2many_mode = opt.one2many_mode
 
         self.coverage_attn = opt.coverage_attn
         self.copy_attn = opt.copy_attention
@@ -37,6 +38,7 @@ class Seq2SeqModel(nn.Module):
         self.bos_idx = opt.word2idx[pykp.io.BOS_WORD]
         self.eos_idx = opt.word2idx[pykp.io.EOS_WORD]
         self.unk_idx = opt.word2idx[pykp.io.UNK_WORD]
+        self.sep_idx = opt.word2idx[pykp.io.SEP_WORD]
 
         self.share_embeddings = opt.share_embeddings
 
@@ -128,7 +130,7 @@ class Seq2SeqModel(nn.Module):
         #self.encoder2decoder_cell.bias.data.fill_(0)
         #self.decoder2vocab.bias.data.fill_(0)
 
-    def forward(self, src, src_lens, trg, src_oov, max_num_oov, src_mask):
+    def forward(self, src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs=None):
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
         :param src_lens: a list containing the length of src sequences for each batch, with len=batch, with oov words replaced by unk idx
@@ -136,6 +138,7 @@ class Seq2SeqModel(nn.Module):
         :param src_oov: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
         :param max_num_oov: int, max number of oov for each batch
         :param src_mask: a FloatTensor, [batch, src_seq_len]
+        :param num_trgs: only effective in one2many mode 2, a list of num of targets in each batch, with len=batch_size
         :return:
         """
         batch_size, max_src_len = list(src.size())
@@ -145,8 +148,12 @@ class Seq2SeqModel(nn.Module):
         assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
         assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
 
+        if self.one2many_mode == 2:
+            assert num_trgs is not None, "If one2many mode is 2, you must supply the number of targets in each sample."
+            assert len(num_trgs) != batch_size, "The length of num_trgs is incorrect"
+
         # Decoding
-        h_t = self.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
+        h_t_init = self.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
         max_target_length = trg.size(1)
         #context = self.init_context(memory_bank)  # [batch, memory_bank_size]
 
@@ -162,12 +169,33 @@ class Seq2SeqModel(nn.Module):
             coverage_all = None
 
         # init y_t to be BOS token
-        y_t = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
+        #y_t = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
+        y_t_init = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
 
         #print(y_t[:5])
-
+        '''
         for t in range(max_target_length):
-            decoder_dist, h_t, _, attn_dist, p_gen, coverage = \
+            # determine the hidden state that will be feed into the next step
+            # according to the time step or the target input
+            re_init_indicators = (y_t == self.sep_idx)  # [batch]
+
+            if t == 0:
+                h_t = h_t_init
+            elif self.one2many_mode == 2 and re_init_indicators.sum().item() != 0:
+                h_t = []
+                # h_t_next [dec_layers, batch_size, decoder_size]
+                # h_t_init [dec_layers, batch_size, decoder_size]
+                for batch_idx, indicator in enumerate(re_init_indicators):
+                    if indicator.item() == 0:
+                        h_t.append(h_t_next[:, batch_idx, :].unsqueeze(1))
+                    else:
+                        # some examples complete one keyphrase
+                        h_t.append(h_t_init[:, batch_idx, :].unsqueeze(1))
+                h_t = torch.cat(h_t, dim=1)  # [dec_layers, batch_size, decoder_size]
+            else:
+                h_t = h_t_next
+
+            decoder_dist, h_t_next, _, attn_dist, p_gen, coverage = \
                 self.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage)
             decoder_dist_all.append(decoder_dist.unsqueeze(1))  # [batch, 1, vocab_size]
             attention_dist_all.append(attn_dist.unsqueeze(1))  # [batch, 1, src_seq_len]
@@ -175,9 +203,58 @@ class Seq2SeqModel(nn.Module):
                 coverage_all.append(coverage.unsqueeze(1))  # [batch, 1, src_seq_len]
             y_t = trg[:, t]
             #y_t_emb = trg_emb[:, t, :].unsqueeze(0)  # [1, batch, embed_size]
-
+        '''
             #print(t)
         #print(trg_emb.size(1))
+
+        #pred_counters = trg.new_zeros(batch_size, dtype=torch.uint8)  # [batch_size]
+
+        for t in range(max_target_length):
+            # determine the hidden state that will be feed into the next step
+            # according to the time step or the target input
+            #re_init_indicators = (y_t == self.eos_idx)  # [batch]
+            if t == 0:
+                pred_counters = trg.new_zeros(batch_size, dtype=torch.uint8)  # [batch_size]
+            else:
+                re_init_indicators = (y_t_next == self.eos_idx)  # [batch_size]
+                pred_counters += re_init_indicators
+
+            if t == 0:
+                h_t = h_t_init
+                y_t = y_t_init
+                #re_init_indicators = (y_t == self.eos_idx)  # [batch]
+                #pred_counters = re_init_indicators
+                #pred_counters = trg.new_zeros(batch_size, dtype=torch.uint8)  # [batch_size]
+
+            elif self.one2many_mode == 2 and re_init_indicators.sum().item() > 0:
+                #re_init_indicators = (y_t_next == self.eos_idx)  # [batch]
+                #pred_counters += re_init_indicators
+                h_t = []
+                y_t = []
+                # h_t_next [dec_layers, batch_size, decoder_size]
+                # h_t_init [dec_layers, batch_size, decoder_size]
+                for batch_idx, (indicator, pred_count, trg_count) in enumerate(zip(re_init_indicators, pred_counters, num_trgs)):
+                    if indicator.item() == 1 and pred_count.item() < trg_count:
+                        # some examples complete one keyphrase
+                        h_t.append(h_t_init[:, batch_idx, :].unsqueeze(1))
+                        y_t.append(y_t_init[batch_idx].unsqueeze(0))
+                    else:  # indicator.item() == 0 or indicator.item() == 1 and pred_count.item() == trg_count:
+                        h_t.append(h_t_next[:, batch_idx, :].unsqueeze(1))
+                        y_t.append(y_t_next[batch_idx].unsqueeze(0))
+                h_t = torch.cat(h_t, dim=1)  # [dec_layers, batch_size, decoder_size]
+                y_t = torch.cat(y_t, dim=0)  # [batch_size]
+            else:
+                h_t = h_t_next
+                y_t = y_t_next
+
+            decoder_dist, h_t_next, _, attn_dist, p_gen, coverage = \
+                self.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage)
+            decoder_dist_all.append(decoder_dist.unsqueeze(1))  # [batch, 1, vocab_size]
+            attention_dist_all.append(attn_dist.unsqueeze(1))  # [batch, 1, src_seq_len]
+            if self.coverage_attn:
+                coverage_all.append(coverage.unsqueeze(1))  # [batch, 1, src_seq_len]
+            y_t_next = trg[:, t]  # [batch]
+            # y_t = trg[:, t]
 
         decoder_dist_all = torch.cat(decoder_dist_all, dim=1)  # [batch_size, trg_len, vocab_size]
         attention_dist_all = torch.cat(attention_dist_all, dim=1)  # [batch_size, trg_len, src_len]
@@ -191,7 +268,7 @@ class Seq2SeqModel(nn.Module):
             assert decoder_dist_all.size() == torch.Size((batch_size, max_target_length, self.vocab_size))
         assert attention_dist_all.size() == torch.Size((batch_size, max_target_length, max_src_len))
 
-        return decoder_dist_all, h_t, attention_dist_all, coverage_all
+        return decoder_dist_all, h_t_next, attention_dist_all, coverage_all
 
     def init_decoder_state(self, encoder_final_state):
         """

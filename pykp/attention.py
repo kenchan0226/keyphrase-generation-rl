@@ -46,6 +46,9 @@ class Attention(nn.Module):
         if self.coverage_attn:
             coverage_input = coverage.view(-1, 1)  # [batch_size*max_input_seq_len, 1]
             coverage_feature = self.coverage_project(coverage_input)  # [batch_size*max_input_seq_len, decoder_size]
+            #print(coverage.size())
+            #print(coverage_feature.size())
+            #print(att_features.size())
             att_features = att_features + coverage_feature
 
         # compute attention score and normalize them

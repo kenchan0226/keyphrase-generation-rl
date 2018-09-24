@@ -235,8 +235,8 @@ def train_opts(parser):
                         help='0: no one2many, train all the keyphrases one by one; 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
 
     # Reinforcement Learning options
-    parser.add_argument('-rl_method', default=0, type=int,
-                        help="""0: ori, 1: running average as baseline""")
+    #parser.add_argument('-rl_method', default=0, type=int,
+    #                    help="""0: ori, 1: running average as baseline""")
     parser.add_argument('-max_sample_length', default=6, type=int,
                         help="The max length of sequence that can be sampled by the model")
     parser.add_argument('-max_length', type=int, default=6,
@@ -246,6 +246,11 @@ def train_opts(parser):
     parser.add_argument('-reward_type', default='f1',
                         choices=['f1', 'ndcg'],
                         help="""Optimization method.""")
+    parser.add_argument('-pg_method', default=0,
+                        choices=[0],
+                        help="0: all words receive the same reward, use self-critical as baseline.")
+    parser.add_argument('-pretrained_model', default="",
+                        help="The path of pretrained model. Only effective in RL")
 
 
     # One2many options
