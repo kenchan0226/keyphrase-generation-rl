@@ -150,7 +150,7 @@ class Seq2SeqModel(nn.Module):
 
         if self.one2many_mode == 2:
             assert num_trgs is not None, "If one2many mode is 2, you must supply the number of targets in each sample."
-            assert len(num_trgs) != batch_size, "The length of num_trgs is incorrect"
+            assert len(num_trgs) == batch_size, "The length of num_trgs is incorrect"
 
         # Decoding
         h_t_init = self.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
