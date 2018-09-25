@@ -151,7 +151,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     #logging.info('Overall average training loss: %.3f, ppl: %.3f' % (total_train_loss_statistics.xent(), total_train_loss_statistics.ppl()))
 
 def train_one_batch(batch, model, optimizer, opt, batch_i):
-    if opt.one2many_mode == 0: # load one2one data
+    if not opt.one2many:  # load one2one data
         src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
         """
         src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
@@ -186,7 +186,7 @@ def train_one_batch(batch, model, optimizer, opt, batch_i):
 
     #if opt.one2many_mode == 0 or opt.one2many_mode == 1:
     start_time = time.time()
-    if opt.one2many_mode == 0:
+    if not opt.one2many:
         decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
     else:
         decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs)

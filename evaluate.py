@@ -29,7 +29,7 @@ def evaluate_loss(data_loader, model, opt):
     with torch.no_grad():
         for batch_i, batch in enumerate(data_loader):
             total_batch += 1
-            if opt.one2many_mode == 0:  # load one2one dataset
+            if not opt.one2many:  # load one2one dataset
                 src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
             else:  # load one2many dataset
                 src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
@@ -47,7 +47,7 @@ def evaluate_loss(data_loader, model, opt):
             trg_oov = trg_oov.to(opt.device)
 
             start_time = time.time()
-            if opt.one2many_mode == 0:
+            if not opt.one2many:
                 decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
             else:
                 decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs)
@@ -253,13 +253,14 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
                 pred_score_list = pred['scores']
                 pred_attn_list = pred['attention']
 
-                if opt.one2many_mode == 1:  # split the concated keyphrases into a list of keyphrases
-                    all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
-                    for word_list in pred_str_list:
-                        all_keyphrase_list += split_concated_keyphrases(word_list, delimiter_word)
-                        #not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
-                    #pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
-                    pred_str_list = all_keyphrase_list
+                if opt.one2many:
+                    if opt.one2many_mode == 1:  # split the concated keyphrases into a list of keyphrases
+                        all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
+                        for word_list in pred_str_list:
+                            all_keyphrase_list += split_concated_keyphrases(word_list, delimiter_word)
+                            #not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
+                        #pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
+                        pred_str_list = all_keyphrase_list
 
                 # output the predicted keyphrases to a file
                 pred_print_out = ''

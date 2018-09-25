@@ -329,7 +329,7 @@ class SequenceGenerator(object):
             if t == 0:
                 h_t = h_t_init
                 y_t = y_t_init
-            elif self.one2many_mode == 2 and re_init_indicators.sum().item() > 0:
+            elif self.one2many and self.one2many_mode == 2 and re_init_indicators.sum().item() > 0:
                 h_t = []
                 y_t = []
                 for batch_idx, (indicator, pred_count) in enumerate(

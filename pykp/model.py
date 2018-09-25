@@ -29,6 +29,7 @@ class Seq2SeqModel(nn.Module):
 
         self.bridge = opt.bridge
         self.one2many_mode = opt.one2many_mode
+        self.one2many = opt.one2many
 
         self.coverage_attn = opt.coverage_attn
         self.copy_attn = opt.copy_attention
@@ -148,7 +149,7 @@ class Seq2SeqModel(nn.Module):
         assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
         assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
 
-        if self.one2many_mode == 2:
+        if self.one2many and self.one2many_mode == 2:
             assert num_trgs is not None, "If one2many mode is 2, you must supply the number of targets in each sample."
             assert len(num_trgs) == batch_size, "The length of num_trgs is incorrect"
 
@@ -226,7 +227,7 @@ class Seq2SeqModel(nn.Module):
                 #pred_counters = re_init_indicators
                 #pred_counters = trg.new_zeros(batch_size, dtype=torch.uint8)  # [batch_size]
 
-            elif self.one2many_mode == 2 and re_init_indicators.sum().item() > 0:
+            elif self.one2many and self.one2many_mode == 2 and re_init_indicators.sum().item() > 0:
                 #re_init_indicators = (y_t_next == self.eos_idx)  # [batch]
                 #pred_counters += re_init_indicators
                 h_t = []

@@ -33,11 +33,11 @@ Command example 1 (one2one baseline):
 
 Command example 2 (one2many baseline, concatenated all the predicted keyphrases for one src, keyphrases are separated by `<sep>` token):
 
-`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many_mode 1 -delimiter_type 0 -batch_size 8`
+`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many -one2many_mode 1 -delimiter_type 0 -batch_size 8`
 
 Command example 3 (one2many baseline, reset the hidden state after the prediction of each keyphrase, keyphrases are separated by `<eos>` token):
 
-`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many_mode 1 -delimiter_type 1 -batch_size 8`
+`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many -one2many_mode 1 -delimiter_type 1 -batch_size 8`
 
 Some common options for the training script:
 ```
@@ -51,8 +51,9 @@ Some common options for the training script:
 -lambda_coverage [coefficient of coverage loss], a coefficient to control the importance of coverage loss, default is 1.
 -train_ml, a flag for training a model using maximum likehood in a supervised learning setting.
 -train_rl, a flag for training a model using reward in a reinforcement learning setting.
--one2many_mode [mode], [mode]=0: no one2many, train all the keyphrases one by one; [mode]=1: concatenated the keyphrases by <sep>; [mode]=2: reset the inital state after each keyphrases.
--delimiter_type [type], only effective when -one2many_mode=1 or 2. If [type] = 0, SEP_WORD=<sep>, if [type] = 1, SEP_WORD=<eos>. Default is 1.
+-one2many, a flag for training a model using one2many mode.
+-one2many_mode [mode], [mode]=1: concatenated the keyphrases by <sep>; [mode]=2: reset the inital state after each keyphrases.
+-delimiter_type [type], only effective in one2many mode. If [type] = 0, SEP_WORD=<sep>, if [type] = 1, SEP_WORD=<eos>. Default is 1.
 ```
 Please read the config.py for more details about the options.
 
