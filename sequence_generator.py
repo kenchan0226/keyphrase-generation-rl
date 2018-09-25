@@ -191,7 +191,7 @@ class SequenceGenerator(object):
         # select the hidden states of the beams specified by the beam_indices -> [dec_layers, beam_size, decoder_size]
         decoder_state_transformed.data.copy_(decoder_state_transformed.data.index_select(1, beam_indices))
 
-    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False):
+    def sample_backup(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False):
         # src, src_lens, src_oov, src_mask, oov_lists, word2idx
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
@@ -281,7 +281,7 @@ class SequenceGenerator(object):
 
         return sample_list, log_selected_token_dist, unfinished_mask_all
 
-    def sample_reset(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False):
+    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1):
         # src, src_lens, src_oov, src_mask, oov_lists, word2idx
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
@@ -302,7 +302,7 @@ class SequenceGenerator(object):
         assert encoder_final_state.size() == torch.Size([batch_size, self.model.num_directions * self.model.encoder_size])
 
         # Init decoder state
-        h_t_init = self.model.init_h_t(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
+        h_t_init = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
 
         if self.coverage_attn:
             coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, max_src_seq]
@@ -323,22 +323,23 @@ class SequenceGenerator(object):
             if t > 0:
                 re_init_indicators = (y_t_next == self.eos_idx)  # [batch_size]
                 pred_counters += re_init_indicators
-                unfinished_mask = pred_counters < trg_count
+                unfinished_mask = pred_counters < num_predictions
+                unfinished_mask = unfinished_mask.unsqueeze(1)
                 unfinished_mask_all.append(unfinished_mask)
 
             if t == 0:
                 h_t = h_t_init
                 y_t = y_t_init
-            elif self.one2many and self.one2many_mode == 2 and re_init_indicators.sum().item() > 0:
+            elif one2many and one2many_mode == 2 and re_init_indicators.sum().item() > 0:
                 h_t = []
                 y_t = []
                 for batch_idx, (indicator, pred_count) in enumerate(
                     zip(re_init_indicators, pred_counters)):
-                    if indicator.item() == 1 and pred_count.item() < trg_count:
+                    if indicator.item() == 1 and pred_count.item() < num_predictions:
                         # some examples complete one keyphrase
                         h_t.append(h_t_init[:, batch_idx, :].unsqueeze(1))
                         y_t.append(y_t_init[batch_idx].unsqueeze(0))
-                    else:  # indicator.item() == 0 or indicator.item() == 1 and pred_count.item() == trg_count:
+                    else:  # indicator.item() == 0 or indicator.item() == 1 and pred_count.item() == num_predictions:
                         h_t.append(h_t_next[:, batch_idx, :].unsqueeze(1))
                         y_t.append(y_t_next[batch_idx].unsqueeze(0))
                 h_t = torch.cat(h_t, dim=1)  # [dec_layers, batch_size, decoder_size]
@@ -370,7 +371,7 @@ class SequenceGenerator(object):
                 if not sample['done']:
                     sample['prediction'].append(prediction[batch_idx][0])  # 0 dim tensor
                     sample['attention'].append(attn_dist[batch_idx])  # [src_len] tensor
-                    if int(prediction[batch_idx][0].item()) == self.model.eos_idx and pred_counters[batch_idx].item() == trg_count-1:
+                    if int(prediction[batch_idx][0].item()) == self.model.eos_idx and pred_counters[batch_idx].item() == num_predictions-1:
                         sample['done'] = True
                 else:
                     pass
@@ -385,7 +386,7 @@ class SequenceGenerator(object):
 
             #if t < max_sample_length - 1:
             #    #unfinished_mask = unfinished_mask_all[-1] * torch.ne(prediction, self.eos_idx)
-            #    unfinished_mask = pred_counters < trg_count
+            #    unfinished_mask = pred_counters < num_predictions
             #    unfinished_mask_all.append(unfinished_mask)
 
         log_selected_token_dist = torch.cat(log_selected_token_dist, dim=1)  # [batch, t]

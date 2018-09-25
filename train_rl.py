@@ -128,6 +128,13 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     oov_lists: a list of oov words for each src, 2dlist
     """
 
+    one2many = opt.one2many
+    one2many_mode = opt.one2many_mode
+    if one2many and one2many_mode == 2:
+        num_predictions = opt.num_predictions
+    else:
+        num_predictions = 1
+
     # move data to GPU if available
     src = src.to(opt.device)
     src_mask = src_mask.to(opt.device)
@@ -150,7 +157,8 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
     # log_selected_token_dist: size: [batch, output_seq_len]
     start_time = time.time()
-    sample_list, log_selected_token_dist, output_mask = generator.sample(src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False)
+    sample_list, log_selected_token_dist, output_mask = generator.sample(
+        src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many, one2many_mode=one2many_mode, num_predictions=num_predictions)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
     sample_time = time_since(start_time)
 

@@ -229,10 +229,6 @@ def train_opts(parser):
                         help='Train with Maximum Likelihood or not')
     parser.add_argument('-train_rl', action="store_true", default=False,
                         help='Train with Reinforcement Learning or not')
-    parser.add_argument('-one2many', action="store_true", default=False,
-                        help='If true, it will not split a sample into multiple src-keyphrase pairs')
-    parser.add_argument('-one2many_mode', type=int, default=1, choices=[1, 2],
-                        help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
 
     # Reinforcement Learning options
     #parser.add_argument('-rl_method', default=0, type=int,
@@ -256,6 +252,12 @@ def train_opts(parser):
     # One2many options
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
+    parser.add_argument('-one2many', action="store_true", default=False,
+                        help='If true, it will not split a sample into multiple src-keyphrase pairs')
+    parser.add_argument('-one2many_mode', type=int, default=1, choices=[1, 2],
+                        help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
+    parser.add_argument('-num_predictions', type=int, default=1,
+                        help='Control the number of predictions when one2many_mode=2.')
 
     #parser.add_argument('-loss_scale', type=float, default=0.5,
     #                    help='A scaling factor to merge the loss of ML and RL parts: L_mixed = γ * L_rl + (1 − γ) * L_ml'
