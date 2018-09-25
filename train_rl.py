@@ -93,7 +93,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                         sys.stdout.flush()
                         num_stop_increasing += 1
                         # decay the learning rate by a factor
-                        for i, param_group in enumerate(optimizer_ml.param_groups):
+                        for i, param_group in enumerate(optimizer_rl.param_groups):
                             old_lr = float(param_group['lr'])
                             new_lr = old_lr * opt.learning_rate_decay
                             if old_lr - new_lr > EPS:
