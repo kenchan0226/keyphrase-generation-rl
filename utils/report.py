@@ -12,7 +12,7 @@ def export_train_and_valid_reward(train_reward, valid_reward, plot_every, path):
         for i in range(len(labels)):
             result_csv.write(labels[i] + concat_float_list(float_lists[i], ',') + '\n')
     # Export the plots to pdf file
-    plot_train_valid_curve(train_loss, valid_loss, plot_every, path, 'Reward')
+    plot_train_valid_curve(train_reward, valid_reward, plot_every, path, 'Reward')
 
 
 def export_train_and_valid_loss(train_loss, valid_loss, train_ppl, valid_ppl, plot_every, path):

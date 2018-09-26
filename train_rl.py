@@ -172,7 +172,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
         with torch.no_grad():
             greedy_sample_list, _, _ = generator.sample(src, src_lens, src_oov, src_mask,
                                                                              oov_lists, opt.max_length,
-                                                                             greedy=True)
+                                                                             greedy=True, one2many=one2many, one2many_mode=one2many_mode, num_predictions=num_predictions)
             greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
                                                     delimiter_word)
         generator.model.train()
