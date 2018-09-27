@@ -6,7 +6,7 @@ from pykp.io import KeyphraseDataset
 from torch.utils.data import DataLoader
 import time
 from utils.time_log import time_since
-from evaluate import evaluate_beam_search
+from evaluate import evaluate_beam_search, prediction_by_sampling
 import pykp.io
 import sys
 import argparse
@@ -51,7 +51,10 @@ def main(opt):
                                       cuda=opt.gpuid > -1,
                                       n_best=opt.n_best
                                       )
-        evaluate_beam_search(generator, test_data_loader, opt, delimiter_word)
+        if opt.one2many and opt.one2many_mode == 2:
+            prediction_by_sampling(generator, test_data_loader, opt, delimiter_word)
+        else:
+            evaluate_beam_search(generator, test_data_loader, opt, delimiter_word)
         total_testing_time = time_since(start_time)
         logging.info('Time for a complete testing: %.1f' % total_testing_time)
         print('Time for a complete testing: %.1f' % total_testing_time)
@@ -90,7 +93,7 @@ if __name__=='__main__':
         opt.exp += '.copy'
 
     if hasattr(opt, 'coverage_attn') and opt.coverage_attn:
-        opt.exp += 'coverage'
+        opt.exp += '.coverage'
 
     if hasattr(opt, 'bidirectional'):
         if opt.bidirectional:

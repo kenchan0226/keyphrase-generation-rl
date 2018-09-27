@@ -413,6 +413,8 @@ def predict_opts(parser):
                         help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
+    parser.add_argument('-num_predictions', type=int, default=1,
+                        help='Control the number of predictions when one2many_mode=2.')
 
 
 

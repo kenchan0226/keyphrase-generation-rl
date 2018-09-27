@@ -99,13 +99,21 @@ def evaluate_reward(data_loader, generator, opt):
             topk = opt.topk
             reward_type = opt.reward_type
 
+            one2many = opt.one2many
+            one2many_mode = opt.one2many_mode
+            if one2many and one2many_mode == 2:
+                num_predictions = opt.num_predictions
+            else:
+                num_predictions = 1
+
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
-            sample_list, log_selected_token_dist, output_mask = generator.sample(src, src_lens, src_oov, src_mask,
-                                                                                 oov_lists, opt.max_length,
-                                                                                 greedy=False)
+            sample_list, log_selected_token_dist, output_mask = generator.sample(
+                src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
+                one2many_mode=one2many_mode, num_predictions=num_predictions)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
+            #print(pred_str_2dlist)
             sample_time = time_since(start_time)
             sample_time_total += sample_time
 
@@ -116,6 +124,67 @@ def evaluate_reward(data_loader, generator, opt):
     eval_reward_stat = RewardStatistics(final_reward_sum, pg_loss=0, n_batch=total_batch, sample_time=sample_time_total)
 
     return eval_reward_stat
+
+def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
+    # file for storing the predicted keyphrases
+    pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
+    # debug
+    interval = 1000
+    generator.model.eval()
+
+    with torch.no_grad():
+        start_time = time.time()
+        for batch_i, batch in enumerate(data_loader):
+            if (batch_i + 1) % interval == 0:
+                print("Batch %d: Time for running beam search on %d batches : %.1f" % (batch_i+1, interval, time_since(start_time)))
+                sys.stdout.flush()
+                start_time = time.time()
+
+            # load one2many dataset
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
+            num_trgs = [len(trg_str_list) for trg_str_list in
+                        trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
+
+            # move data to GPU if available
+            src = src.to(opt.device)
+            src_mask = src_mask.to(opt.device)
+            src_oov = src_oov.to(opt.device)
+            # trg = trg.to(opt.device)
+            # trg_mask = trg_mask.to(opt.device)
+            # trg_oov = trg_oov.to(opt.device)
+
+            eos_idx = opt.word2idx[pykp.io.EOS_WORD]
+            batch_size = src.size(0)
+
+            one2many = opt.one2many
+            one2many_mode = opt.one2many_mode
+            if one2many and one2many_mode == 2:
+                num_predictions = opt.num_predictions
+            else:
+                num_predictions = 1
+
+            start_time = time.time()
+            # sample a sequence
+            # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
+            sample_list, log_selected_token_dist, output_mask = generator.sample(
+                src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
+                one2many_mode=one2many_mode, num_predictions=num_predictions)
+            pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
+                                                        delimiter_word)
+            # output the predicted keyphrases to a file
+            pred_print_out = ''
+            for pred_str_list in pred_str_2dlist:
+                for word_list_i, word_list in enumerate(pred_str_list):
+                    if word_list_i < len(pred_str_list) - 1:
+                        pred_print_out += '%s;' % ' '.join(word_list)
+                    else:
+                        pred_print_out += '%s' % ' '.join(word_list)
+                pred_print_out += '\n'
+            pred_output_file.write(pred_print_out)
+
+    pred_output_file.close()
+    print("done!")
+    return pred_str_2dlist
 
 '''
 def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list):
@@ -210,7 +279,7 @@ def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_
     return pred_list
 
 def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<sep>'):
-    score_dict_all = defaultdict(list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
+    #score_dict_all = defaultdict(list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
     # file for storing the predicted keyphrases
     pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
     # debug
