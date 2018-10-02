@@ -117,7 +117,7 @@ def model_opts(parser):
                         help='Train a coverage attention layer.')
     parser.add_argument('-lambda_coverage', type=float, default=1,
                         help='Lambda value for coverage by See et al.')
-    parser.add_argument('-coverage_loss', action="store_true",
+    parser.add_argument('-coverage_loss', action="store_true", default=False,
                         help='whether to include coverage loss')
 
     # parser.add_argument('-context_gate', type=str, default=None,
@@ -240,14 +240,18 @@ def train_opts(parser):
     parser.add_argument('-topk', type=int, default=10,
                         help='The only pick the top k predictions in reward.')
     parser.add_argument('-reward_type', default='f1',
-                        choices=['f1', 'ndcg'],
-                        help="""Optimization method.""")
-    parser.add_argument('-pg_method', default=0,
-                        choices=[0],
-                        help="0: all words receive the same reward, use self-critical as baseline.")
+                        choices=['f1', 'ndcg', 'acc', 're'],
+                        help="""Type of reward. re stands for recall.""")
     parser.add_argument('-pretrained_model', default="",
                         help="The path of pretrained model. Only effective in RL")
-
+    parser.add_argument('-reward_shaping', action="store_true", default=False,
+                        help="Use reward shaping in RL training")
+    parser.add_argument('-baseline', default="none", choices=["none", "self"],
+                        help="The baseline in RL training. none: no baseline; self: use greedy decoding as baseline")
+    parser.add_argument('-mc_rollouts', action="store_true", default=False,
+                        help="Use Monte Carlo rollouts to estimate q value")
+    parser.add_argument('-num_rollouts', type=int, default=3,
+                        help="The number of Monte Carlo rollouts. Only effective when mc_rollouts is True")
 
     # One2many options
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
@@ -413,10 +417,8 @@ def predict_opts(parser):
                         help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
-    parser.add_argument('-num_predictions', type=int, default=1,
-                        help='Control the number of predictions when one2many_mode=2.')
-
-
+    #parser.add_argument('-num_predictions', type=int, default=1,
+    #                    help='Control the number of predictions when one2many_mode=2.')
 
 
 def post_predict_opts(parser):

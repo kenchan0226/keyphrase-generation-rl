@@ -37,10 +37,50 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
         if reward_type == "f1":
             precision_k, recall_k, f1_k, _, _ = compute_classification_metrics_at_k(is_match, num_unique_predictions, num_unique_targets, topk=topk)
             reward[idx] = f1_k
-        else:
+        elif reward_type == 're':
+            precision_k, recall_k, f1_k, _, _ = compute_classification_metrics_at_k(is_match, num_unique_predictions,
+                                                                                    num_unique_targets, topk=topk)
+            reward[idx] = recall_k
+        elif reward_type == "ndcg":
             ndcg_k = ndcg_at_k(is_match, topk, method=1)
             reward[idx] = ndcg_k
+        else:  # accuracy
+            acc = sum(is_match)/is_match.shape[0]
+            reward[idx] = acc
     return reward
+
+
+def compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping, reward_type, topk):
+    phrase_reward = np.zeros((batch_size, num_predictions))
+    if reward_shaping:
+        for t in range(num_predictions):
+            pred_str_2dlist_at_t = [pred_str_list[:t + 1] for pred_str_list in pred_str_2dlist]
+            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk)
+    else:
+        phrase_reward[:, num_predictions - 1] = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type,
+                                                               topk)
+    return phrase_reward
+
+
+def shape_reward(reward_np_array):
+    batch_size, seq_len = reward_np_array.shape
+    left_padding = np.zeros((batch_size, 1))
+    left_padded_reward = np.concatenate([left_padding, reward_np_array], axis=1)
+    return np.diff(left_padded_reward, n=1, axis=1)
+
+
+def phrase_reward_to_stepwise_reward(phrase_reward, eos_idx_mask):
+    batch_size, seq_len = eos_idx_mask.size()
+    stepwise_reward = np.zeros((batch_size, seq_len))
+    for i in range(batch_size):
+        pred_cnt = 0
+        for j in range(seq_len):
+            if eos_idx_mask[i, j].item() == 1:
+                stepwise_reward[i, j] = phrase_reward[i, pred_cnt]
+                pred_cnt += 1
+            #elif j == seq_len:
+            #    pass
+    return stepwise_reward
 
 
 def compute_pg_loss(log_likelihood, output_mask, q_val_sample):
@@ -56,3 +96,8 @@ def compute_pg_loss(log_likelihood, output_mask, q_val_sample):
     objective = -log_likelihood * output_mask * q_val_sample
     objective = torch.sum(objective)/torch.sum(output_mask)
     return objective
+
+
+if __name__ == "__main__":
+    reward = np.array([[1,3,5,6],[2,3,5,9]])
+    print(shape_reward(reward))

@@ -11,7 +11,7 @@ import sys
 import logging
 import os
 from evaluate import evaluate_reward
-from pykp.reward import sample_list_to_str_2dlist, compute_reward, compute_pg_loss
+from pykp.reward import *
 
 EPS = 1e-8
 
@@ -150,27 +150,41 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     batch_size = src.size(0)
     topk = opt.topk
     reward_type = opt.reward_type
+    reward_shaping = opt.reward_shaping
+    baseline = opt.baseline
 
-    generator.model.train()
+    #generator.model.train()
 
-    # sample a sequence
+    # sample a sequence from the model
     # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
     # log_selected_token_dist: size: [batch, output_seq_len]
     start_time = time.time()
-    sample_list, log_selected_token_dist, output_mask = generator.sample(
+    sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask= generator.sample(
         src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many, one2many_mode=one2many_mode, num_predictions=num_predictions)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
     sample_time = time_since(start_time)
-
     max_pred_seq_len = log_selected_token_dist.size(1)
 
-    start_time = time.time()
+    # if use self critical as baseline, greedily decode a sequence from the model
+    if opt.baseline == 'self':
+        generator.model.eval()
+        with torch.no_grad():
+            greedy_sample_list, _, _, greedy_eos_idx_mask = generator.sample(src, src_lens, src_oov, src_mask,
+                                                                             oov_lists, opt.max_length,
+                                                                             greedy=True, one2many=one2many,
+                                                                             one2many_mode=one2many_mode,
+                                                                             num_predictions=num_predictions)
+            greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
+                                                          eos_idx,
+                                                          delimiter_word)
+        generator.model.train()
+    '''
     if opt.pg_method == 0:
         # reward: an np array with size [batch_size]
         reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type, topk)
         generator.model.eval()
         with torch.no_grad():
-            greedy_sample_list, _, _ = generator.sample(src, src_lens, src_oov, src_mask,
+            greedy_sample_list, _, _, greedy_eos_idx_mask = generator.sample(src, src_lens, src_oov, src_mask,
                                                                              oov_lists, opt.max_length,
                                                                              greedy=True, one2many=one2many, one2many_mode=one2many_mode, num_predictions=num_predictions)
             greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
@@ -184,11 +198,66 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
         q_value_sample.requires_grad_(True)
         final_reward = reward
 
-    q_estimate_compute_time = time_since(start_time)
-    #final_reward = reward[:, -1]  # Final reward for each batch, np.array: [batch_size]
-    final_reward_sum = final_reward.sum(0)
-    pg_loss = compute_pg_loss(log_selected_token_dist, output_mask, q_value_sample)
+    elif opt.pg_method == 1:  # stepwise reward
+        #reward = np.zeros((batch_size, max_pred_seq_len))
+        phrase_reward = np.zeros((batch_size, num_predictions + 1))  # store the reward received for each prediction, the last column is the reward for padded words, which must be 0
+        for t in range(num_predictions):
+            pred_str_2dlist_at_t = [pred_str_list[:t+1] for pred_str_list in pred_str_2dlist]
+            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk)
+        with torch.no_grad():
+            greedy_sample_list, _, _, greedy_eos_idx_mask = generator.sample(src, src_lens, src_oov, src_mask,
+                                                                              oov_lists, opt.max_length,
+                                                                              greedy=True, one2many=one2many,
+                                                                              one2many_mode=one2many_mode,
+                                                                              num_predictions=num_predictions)
+            greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
+                                                          eos_idx,
+                                                          delimiter_word)
+        generator.model.train()
+        phrase_baseline = np.zeros((batch_size, num_predictions + 1))
+        for t in range(num_predictions):
+            greedy_str_2dlist_at_t = [greedy_str_list[:t + 1] for greedy_str_list in greedy_str_2dlist]
+            phrase_baseline[:, t] = compute_reward(trg_str_2dlist, greedy_str_2dlist_at_t, batch_size, reward_type, topk)
+        baselined_phrase_reward = phrase_reward - phrase_baseline
+        baselined_phrase_reward = torch.from_numpy(baselined_phrase_reward).type(torch.FloatTensor).to(src.device).requires_grad_(False)
+        baselined_reward = torch.gather(baselined_phrase_reward, dim=1, index=pred_phrase_idx_mask)
+        q_value_sample = baselined_reward
 
+        q_value_sample.requires_grad_(True)
+        final_reward = phrase_reward[:, num_predictions - 1]
+    '''
+
+    # Compute the reward for each predicted keyphrase
+    # if using reward shaping, each keyphrase will have its own reward, else, only the last keyphrase will get a reward
+    phrase_reward = compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
+                          reward_type, topk)  # np array with size: [batch_size, num_predictions]
+    cumulative_reward = phrase_reward[:, num_predictions - 1]
+    cumulative_reward_sum = cumulative_reward.sum(0)
+
+    # Subtract reward by a baseline if needed
+    if opt.baseline == 'self':
+        phrase_baseline = compute_phrase_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
+                          reward_type, topk)
+        phrase_reward = phrase_reward - phrase_baseline
+
+    if reward_shaping:
+        phrase_reward = shape_reward(phrase_reward)
+
+    # convert to reward received at each decoding step
+    stepwise_reward = phrase_reward_to_stepwise_reward(phrase_reward, pred_eos_idx_mask)
+
+    #shapped_baselined_reward = torch.gather(shapped_baselined_phrase_reward, dim=1, index=pred_phrase_idx_mask)
+
+    # use the return as the estimation of q_value at each step
+    q_value_estimate = np.cumsum(stepwise_reward[:,::-1], axis=1)[:,::-1].copy()
+    q_value_estimate = torch.from_numpy(q_value_estimate).type(torch.FloatTensor).to(src.device)
+    q_value_estimate.requires_grad_(True)
+    q_estimate_compute_time = time_since(start_time)
+
+    # compute the policy gradient objective
+    pg_loss = compute_pg_loss(log_selected_token_dist, output_mask, q_value_estimate)
+
+    # back propagation to compute the gradient
     start_time = time.time()
     pg_loss.backward()
     backward_time = time_since(start_time)
@@ -196,9 +265,10 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     if opt.max_grad_norm > 0:
         grad_norm_before_clipping = nn.utils.clip_grad_norm_(generator.model.parameters(), opt.max_grad_norm)
 
+    # take a step of gradient descent
     optimizer.step()
 
-    stat = RewardStatistics(final_reward_sum, pg_loss.item(), sample_time, q_estimate_compute_time, backward_time)
+    stat = RewardStatistics(cumulative_reward_sum, pg_loss.item(), sample_time, q_estimate_compute_time, backward_time)
     # reward=0.0, pg_loss=0.0, n_batch=0, sample_time=0, q_estimate_compute_time=0, backward_time=0
 
     return stat, log_selected_token_dist.detach()

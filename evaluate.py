@@ -109,7 +109,7 @@ def evaluate_reward(data_loader, generator, opt):
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
-            sample_list, log_selected_token_dist, output_mask = generator.sample(
+            sample_list, log_selected_token_dist, output_mask, pred_idx_mask = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
@@ -141,7 +141,7 @@ def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
                 start_time = time.time()
 
             # load one2many dataset
-            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, original_idx_list = batch
             num_trgs = [len(trg_str_list) for trg_str_list in
                         trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
 
@@ -158,19 +158,26 @@ def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
 
             one2many = opt.one2many
             one2many_mode = opt.one2many_mode
+            '''
             if one2many and one2many_mode == 2:
-                num_predictions = opt.num_predictions
+                num_predictions = opt.n_best
             else:
                 num_predictions = 1
-
+            '''
+            num_predictions = opt.n_best
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
-            sample_list, log_selected_token_dist, output_mask = generator.sample(
+            sample_list, log_selected_token_dist, output_mask, pred_idx_mask = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
                                                         delimiter_word)
+            # recover the original order in the dataset
+            seq_pairs = sorted(zip(original_idx_list, pred_str_2dlist),
+                               key=lambda p: p[0])
+            original_idx_list, pred_str_2dlist = zip(*seq_pairs)
+
             # output the predicted keyphrases to a file
             pred_print_out = ''
             for pred_str_list in pred_str_2dlist:
