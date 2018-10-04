@@ -49,7 +49,6 @@ def process_opt(opt):
     else:
         opt.delimiter_word = pykp.io.EOS_WORD
 
-
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)

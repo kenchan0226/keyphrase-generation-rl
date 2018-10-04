@@ -115,6 +115,9 @@ def model_opts(parser):
 
     parser.add_argument('-coverage_attn', action="store_true",
                         help='Train a coverage attention layer.')
+    parser.add_argument('-review_attn', action="store_true",
+                        help='Train a review attention layer')
+
     parser.add_argument('-lambda_coverage', type=float, default=1,
                         help='Lambda value for coverage by See et al.')
     parser.add_argument('-coverage_loss', action="store_true", default=False,
@@ -258,8 +261,8 @@ def train_opts(parser):
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
     parser.add_argument('-one2many', action="store_true", default=False,
                         help='If true, it will not split a sample into multiple src-keyphrase pairs')
-    parser.add_argument('-one2many_mode', type=int, default=1, choices=[1, 2],
-                        help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
+    parser.add_argument('-one2many_mode', type=int, default=1, choices=[1, 2, 3],
+                        help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
     parser.add_argument('-num_predictions', type=int, default=1,
                         help='Control the number of predictions when one2many_mode=2.')
 
@@ -413,8 +416,8 @@ def predict_opts(parser):
                         help="Path of experiment log/plot.")
     parser.add_argument('-one2many', action="store_true", default=False,
                         help='If true, it will not split a sample into multiple src-keyphrase pairs')
-    parser.add_argument('-one2many_mode', type=int, default=1, choices=[1, 2],
-                        help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state after each keyphrases')
+    parser.add_argument('-one2many_mode', type=int, choices=[1, 2, 3],
+                        help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
     #parser.add_argument('-num_predictions', type=int, default=1,
@@ -440,3 +443,5 @@ def post_predict_opts(parser):
                         help="If False, it will only keep the first one-word prediction")
     parser.add_argument('-disable_valid_filter', action="store_true",
                         help="If False, it will remove all the invalid predictions")
+    parser.add_argument('-num_preds', type=int, default=50,
+                        help='It will only consider the first num_preds keyphrases in each line of the prediction file')

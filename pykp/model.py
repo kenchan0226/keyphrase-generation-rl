@@ -42,6 +42,7 @@ class Seq2SeqModel(nn.Module):
         self.sep_idx = opt.word2idx[pykp.io.SEP_WORD]
 
         self.share_embeddings = opt.share_embeddings
+        self.review_attn = opt.review_attn
 
         '''
         self.attention_mode = opt.attention_mode    # 'dot', 'general', 'concat'
@@ -98,6 +99,7 @@ class Seq2SeqModel(nn.Module):
             memory_bank_size=self.num_directions * self.encoder_size,
             coverage_attn=self.coverage_attn,
             copy_attn=self.copy_attn,
+            review_attn=self.review_attn,
             pad_idx=self.pad_idx_trg,
             dropout=self.dropout
         )
@@ -168,6 +170,12 @@ class Seq2SeqModel(nn.Module):
         else:
             coverage = None
             coverage_all = None
+
+        if self.review_attn:
+            decoder_memory_bank = h_t_init[-1, :, :].unsqueeze(1)  # [batch, 1, decoder_size]
+            assert decoder_memory_bank.size() == torch.Size([batch_size, 1, self.decoder_size])
+        else:
+            decoder_memory_bank = None
 
         # init y_t to be BOS token
         #y_t = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
@@ -244,12 +252,31 @@ class Seq2SeqModel(nn.Module):
                         y_t.append(y_t_next[batch_idx].unsqueeze(0))
                 h_t = torch.cat(h_t, dim=1)  # [dec_layers, batch_size, decoder_size]
                 y_t = torch.cat(y_t, dim=0)  # [batch_size]
+            elif self.one2many and self.one2many_mode == 3 and re_init_indicators.sum().item() > 0:
+                # re_init_indicators = (y_t_next == self.eos_idx)  # [batch]
+                # pred_counters += re_init_indicators
+                h_t = h_t_next
+                y_t = []
+                # h_t_next [dec_layers, batch_size, decoder_size]
+                # h_t_init [dec_layers, batch_size, decoder_size]
+                for batch_idx, (indicator, pred_count, trg_count) in enumerate(
+                        zip(re_init_indicators, pred_counters, num_trgs)):
+                    if indicator.item() == 1 and pred_count.item() < trg_count:
+                        # some examples complete one keyphrase
+                        y_t.append(y_t_init[batch_idx].unsqueeze(0))
+                    else:  # indicator.item() == 0 or indicator.item() == 1 and pred_count.item() == trg_count:
+                        y_t.append(y_t_next[batch_idx].unsqueeze(0))
+                y_t = torch.cat(y_t, dim=0)  # [batch_size]
             else:
                 h_t = h_t_next
                 y_t = y_t_next
 
+            if self.review_attn:
+                if t > 0:
+                    decoder_memory_bank = torch.cat([decoder_memory_bank, h_t[-1, :, :].unsqueeze(1)], dim=1)  # [batch, t+1, decoder_size]
+
             decoder_dist, h_t_next, _, attn_dist, p_gen, coverage = \
-                self.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage)
+                self.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank)
             decoder_dist_all.append(decoder_dist.unsqueeze(1))  # [batch, 1, vocab_size]
             attention_dist_all.append(attn_dist.unsqueeze(1))  # [batch, 1, src_seq_len]
             if self.coverage_attn:

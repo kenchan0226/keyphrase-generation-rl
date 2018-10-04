@@ -350,6 +350,17 @@ class SequenceGenerator(object):
                         y_t.append(y_t_next[batch_idx].unsqueeze(0))
                 h_t = torch.cat(h_t, dim=1)  # [dec_layers, batch_size, decoder_size]
                 y_t = torch.cat(y_t, dim=0)  # [batch_size]
+            elif one2many and one2many_mode == 3 and re_init_indicators.sum().item() > 0:
+                h_t = h_t_next
+                y_t = []
+                for batch_idx, (indicator, pred_count) in enumerate(
+                    zip(re_init_indicators, pred_counters)):
+                    if indicator.item() == 1 and pred_count.item() < num_predictions:
+                        # some examples complete one keyphrase
+                        y_t.append(y_t_init[batch_idx].unsqueeze(0))
+                    else:  # indicator.item() == 0 or indicator.item() == 1 and pred_count.item() == num_predictions:
+                        y_t.append(y_t_next[batch_idx].unsqueeze(0))
+                y_t = torch.cat(y_t, dim=0)  # [batch_size]
             else:
                 h_t = h_t_next
                 y_t = y_t_next

@@ -233,6 +233,7 @@ def main(opt):
     for src_l, trg_l, pred_l in zip(open(src_file_path), open(trg_file_path), open(pred_file_path)):
         num_src += 1
         pred_str_list = pred_l.strip().split(';')
+        pred_str_list = pred_str_list[:opt.num_preds]
         pred_str_list = [pred_str.split(' ') for pred_str in pred_str_list]
         trg_str_list = trg_l.strip().split(';')
         trg_str_list = [trg_str.split(' ') for trg_str in trg_str_list]
