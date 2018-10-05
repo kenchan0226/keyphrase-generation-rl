@@ -151,7 +151,7 @@ class Seq2SeqModel(nn.Module):
         assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
         assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
 
-        if self.one2many and self.one2many_mode == 2:
+        if self.one2many and self.one2many_mode > 1:
             assert num_trgs is not None, "If one2many mode is 2, you must supply the number of targets in each sample."
             assert len(num_trgs) == batch_size, "The length of num_trgs is incorrect"
 

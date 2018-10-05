@@ -51,7 +51,7 @@ def main(opt):
                                       cuda=opt.gpuid > -1,
                                       n_best=opt.n_best
                                       )
-        if opt.one2many and opt.one2many_mode == 2:
+        if opt.one2many and opt.one2many_mode > 1:
             prediction_by_sampling(generator, test_data_loader, opt, delimiter_word)
         else:
             evaluate_beam_search(generator, test_data_loader, opt, delimiter_word)

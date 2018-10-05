@@ -101,7 +101,7 @@ def evaluate_reward(data_loader, generator, opt):
 
             one2many = opt.one2many
             one2many_mode = opt.one2many_mode
-            if one2many and one2many_mode == 2:
+            if one2many and one2many_mode > 1:
                 num_predictions = opt.num_predictions
             else:
                 num_predictions = 1
