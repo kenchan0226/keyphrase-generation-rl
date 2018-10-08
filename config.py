@@ -243,8 +243,8 @@ def train_opts(parser):
     parser.add_argument('-topk', type=int, default=10,
                         help='The only pick the top k predictions in reward.')
     parser.add_argument('-reward_type', default='f1', type=int,
-                        choices=[0, 1, 2, 3, 4],
-                        help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg.""")
+                        choices=[0, 1, 2, 3, 4, 5],
+                        help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg, 5: alpha-dcg.""")
     parser.add_argument('-match_type', default='exact',
                         choices=['exact', 'sub'],
                         help="""Either exact matching or substring matching.""")

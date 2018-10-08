@@ -62,7 +62,13 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
             is_match_2d = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                             pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=2)
             # is_match_2d: [num_trg_str, num_pred_str]
-            reward[idx] = alpha_ndcg_at_k(r_2d, topk, method=1, alpha=0.5)
+            reward[idx] = alpha_ndcg_at_k(is_match_2d, topk, method=1, alpha=0.5)
+        elif reward_type == 5:  # alpha-dcg
+            # boolean np array to indicate which prediction matches the target
+            is_match_2d = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
+                                               pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=2)
+            # is_match_2d: [num_trg_str, num_pred_str]
+            reward[idx] = alpha_dcg_at_k(is_match_2d, topk, method=1, alpha=0.5)
     return reward
 
 
