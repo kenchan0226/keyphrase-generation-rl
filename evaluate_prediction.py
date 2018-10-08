@@ -245,7 +245,7 @@ def ndcg_at_k(r, k, method=1):
         Normalized discounted cumulative gain
     """
     dcg_max = dcg_at_k(sorted(r, reverse=True), k, method)
-    if not dcg_max:
+    if not dcg_max or dcg_max == 0:
         return 0.
     return dcg_at_k(r, k, method) / dcg_max
 
@@ -280,6 +280,8 @@ def alpha_ndcg_at_k(r_2d, k, method=1, alpha=0.5):
     alpha_dcg = alpha_dcg_at_k(r_2d, k, method, alpha)
     # compute alpha_dcg_max
     alpha_dcg_max = ideal_alpha_dcg_at_k(r_2d, k, method, alpha)
+    if not alpha_dcg_max or alpha_dcg_max == 0:
+        return 0
     return alpha_dcg / alpha_dcg_max
 
 
