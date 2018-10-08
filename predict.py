@@ -43,6 +43,7 @@ def main(opt):
                                       max_sequence_length=opt.max_length,
                                       copy_attn=opt.copy_attention,
                                       coverage_attn=opt.coverage_attn,
+                                      review_attn=opt.review_attn,
                                       include_attn_dist=opt.include_attn_dist,
                                       length_penalty_factor=opt.length_penalty_factor,
                                       coverage_penalty_factor=opt.coverage_penalty_factor,

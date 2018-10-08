@@ -96,14 +96,14 @@ def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list):
     return is_present, not_duplicate
 
 
-def compute_match_result(trg_str_list, pred_str_list, type='exact'):
-    assert type in ['exact'], "Right now only support exact matching"
+def compute_match_result_backup(trg_str_list, pred_str_list, type='exact'):
+    assert type in ['exact', 'sub'], "Right now only support exact matching and substring matching"
     num_pred_str = len(pred_str_list)
     num_trg_str = len(trg_str_list)
     is_match = np.zeros(num_pred_str, dtype=bool)
 
     for pred_idx, pred_word_list in enumerate(pred_str_list):
-        if type == 'exact':
+        if type == 'exact':  # exact matching
             is_match[pred_idx] = False
             for trg_idx, trg_word_list in enumerate(trg_str_list):
                 if len(pred_word_list) != len(trg_word_list): # if length not equal, it cannot be a match
@@ -117,6 +117,46 @@ def compute_match_result(trg_str_list, pred_str_list, type='exact'):
                 if match:
                     is_match[pred_idx] = True
                     break
+        elif type == 'sub':  # consider a match if the prediction is a subset of the target
+            joined_pred_word_list = ' '.join(pred_word_list)
+            for trg_idx, trg_word_list in enumerate(trg_str_list):
+                if joined_pred_word_list in ' '.join(trg_word_list):
+                    is_match[pred_idx] = True
+                    break
+    return is_match
+
+
+def compute_match_result(trg_str_list, pred_str_list, type='exact', dimension=1):
+    assert type in ['exact', 'sub'], "Right now only support exact matching and substring matching"
+    assert dimension in [1, 2], "only support 1 or 2"
+    num_pred_str = len(pred_str_list)
+    num_trg_str = len(trg_str_list)
+    if dimension == 1:
+        is_match = np.zeros(num_pred_str, dtype=bool)
+        for pred_idx, pred_word_list in enumerate(pred_str_list):
+            joined_pred_word_list = ' '.join(pred_word_list)
+            for trg_idx, trg_word_list in enumerate(trg_str_list):
+                joined_trg_word_list = ' '.join(trg_word_list)
+                if type == 'exact':
+                    if joined_pred_word_list == joined_trg_word_list:
+                        is_match[pred_idx] = True
+                        break
+                elif type == 'sub':
+                    if joined_pred_word_list in joined_trg_word_list:
+                        is_match[pred_idx] = True
+                        break
+    else:
+        is_match = np.zeros((num_trg_str, num_pred_str), dtype=bool)
+        for trg_idx, trg_word_list in enumerate(trg_str_list):
+            joined_trg_word_list = ' '.join(trg_word_list)
+            for pred_idx, pred_word_list in enumerate(pred_str_list):
+                joined_pred_word_list = ' '.join(pred_word_list)
+                if type == 'exact':
+                    if joined_pred_word_list == joined_trg_word_list:
+                        is_match[trg_idx][pred_idx] = True
+                elif type == 'sub':
+                    if joined_pred_word_list in joined_trg_word_list:
+                        is_match[trg_idx][pred_idx] = True
     return is_match
 
 
@@ -159,7 +199,7 @@ def compute_classificatioon_metrics(num_matches, num_predictions, num_trgs):
     return precision, recall, f1
 
 
-def dcg_at_k(r, k, method=0):
+def dcg_at_k(r, k, method=1):
     """
     Reference from https://www.kaggle.com/wendykan/ndcg-example and https://gist.github.com/bwhite/3726239
     Score is discounted cumulative gain (dcg)
@@ -181,13 +221,15 @@ def dcg_at_k(r, k, method=0):
         if method == 0:
             return r[0] + np.sum(r[1:] / np.log2(np.arange(2, r.size + 1)))
         elif method == 1:
-            return np.sum(r / np.log2(np.arange(2, r.size + 2)))
+            tmp = r / np.log2(np.arange(2, r.size + 2))
+            # tmp2 = np.cumsum(tmp, 0)
+            return np.sum(tmp)
         else:
             raise ValueError('method must be 0 or 1.')
     return 0.
 
 
-def ndcg_at_k(r, k, method=0):
+def ndcg_at_k(r, k, method=1):
     """Score is normalized discounted cumulative gain (ndcg)
     Relevance is positive real values.  Can use binary
     as the previous methods.
@@ -206,6 +248,62 @@ def ndcg_at_k(r, k, method=0):
     if not dcg_max:
         return 0.
     return dcg_at_k(r, k, method) / dcg_max
+
+
+def alpha_dcg_at_k(r_2d, k, method=1, alpha=0.5):
+    """
+    :param r_2d: 2d relevance np array, shape: [num_trg_str, num_pred_str]
+    :param k:
+    :param method:
+    :param alpha:
+    :return:
+    """
+    # convert r_2d to gain vector
+    num_trg_str, num_pred_str = r_2d.shape
+    gain_vector = np.zeros(num_pred_str)
+    one_minus_alpha_vec = np.ones(num_trg_str) * (1 - alpha)  # [num_trg_str]
+    cum_r = np.concatenate((np.zeros((num_trg_str, 1)), np.cumsum(r_2d, axis=1)), axis=1)
+    for j in range(num_pred_str):
+        gain_vector[j] = np.dot(r_2d[:, j], np.power(one_minus_alpha_vec, cum_r[:, j]))
+    return dcg_at_k(gain_vector, k, method)
+
+
+def alpha_ndcg_at_k(r_2d, k, method=1, alpha=0.5):
+    """
+    :param r_2d: 2d relevance np array, shape: [num_trg_str, num_pred_str]
+    :param k:
+    :param method:
+    :param alpha:
+    :return:
+    """
+    # convert r to gain vector
+    alpha_dcg = alpha_dcg_at_k(r_2d, k, method, alpha)
+    # compute alpha_dcg_max
+    alpha_dcg_max = ideal_alpha_dcg_at_k(r_2d, k, method, alpha)
+    return alpha_dcg / alpha_dcg_max
+
+
+def ideal_alpha_dcg_at_k(r_2d, k, method=1, alpha=0.5):
+    num_trg_str, num_pred_str = r_2d.shape
+    one_minus_alpha_vec = np.ones(num_trg_str) * (1 - alpha)  # [num_trg_str]
+    cum_r_vector = np.zeros((num_trg_str))
+    ideal_ranking = []
+    greedy_depth = min(num_pred_str, k)
+    for rank in range(greedy_depth):
+        gain_vector = np.zeros(num_pred_str)
+        for j in range(num_pred_str):
+            if j in ideal_ranking:
+                gain_vector[j] = -1000.0
+            else:
+                gain_vector[j] = np.dot(r_2d[:, j], np.power(one_minus_alpha_vec, cum_r_vector))
+        max_idx = np.argmax(gain_vector)
+        ideal_ranking.append(max_idx)
+        current_relevance_vector = r_2d[:, max_idx]
+        cum_r_vector = cum_r_vector + current_relevance_vector
+    r_2d_ideal = r_2d[:, np.array(ideal_ranking)]
+    #r_1d = np.sum(r_2d, axis=0)  # [num_preds]
+    #r_1d_ideal = r_1d[np.array(ideal_ranking)]  # [k]
+    return alpha_dcg_at_k(r_2d_ideal, k, method, alpha)
 
 
 def main(opt):
@@ -336,6 +434,7 @@ def main(opt):
                                                              num_predictions_k, num_filtered_targets, topk, is_present)
                 for metric, result in results.items():
                     score_dict_all[metric].append(result)
+                ndcg_k = ndcg_at_k()
 
                 #print("Result of %s@%d" % (present_tag, topk))
                 #print(results)

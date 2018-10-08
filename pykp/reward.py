@@ -1,6 +1,6 @@
 import numpy as np
 from utils.string_helper import *
-from evaluate_prediction import compute_match_result, compute_classification_metrics_at_k, check_duplicate_keyphrases, ndcg_at_k
+from evaluate_prediction import *
 import torch
 
 
@@ -14,7 +14,7 @@ def sample_list_to_str_2dlist(sample_list, oov_lists, idx2word, vocab_size, eos_
     return pred_str_2dlist
 
 
-def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1', topk=10):
+def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1', topk=10, match_type="exact"):
     assert len(trg_str_2dlist) == batch_size
     assert len(pred_str_2dlist) == batch_size
     reward = np.zeros(batch_size)
@@ -32,33 +32,49 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
                                   is_keep]
         num_unique_targets = len(unique_stemmed_trg_str_list)
         num_unique_predictions = len(unique_stemmed_pred_str_list)
-        # boolean np array to indicate which prediction matches the target
-        is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list, pred_str_list=unique_stemmed_pred_str_list)
-        if reward_type == "f1":
+        if reward_type == 0:  # f1
+            # boolean np array to indicate which prediction matches the target
+            is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
+                                            pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             precision_k, recall_k, f1_k, _, _ = compute_classification_metrics_at_k(is_match, num_unique_predictions, num_unique_targets, topk=topk)
             reward[idx] = f1_k
-        elif reward_type == 're':
+        elif reward_type == 1:  # recall
+            # boolean np array to indicate which prediction matches the target
+            is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
+                                            pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             precision_k, recall_k, f1_k, _, _ = compute_classification_metrics_at_k(is_match, num_unique_predictions,
                                                                                     num_unique_targets, topk=topk)
             reward[idx] = recall_k
-        elif reward_type == "ndcg":
+        elif reward_type == 2:  # ndcg
+            # boolean np array to indicate which prediction matches the target
+            is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
+                                            pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             ndcg_k = ndcg_at_k(is_match, topk, method=1)
             reward[idx] = ndcg_k
-        else:  # accuracy
+        elif reward_type == 3:  # accuracy
+            # boolean np array to indicate which prediction matches the target
+            is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
+                                            pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             acc = sum(is_match)/is_match.shape[0]
             reward[idx] = acc
+        elif reward_type == 4:  # alpha-ndcg
+            # boolean np array to indicate which prediction matches the target
+            is_match_2d = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
+                                            pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=2)
+            # is_match_2d: [num_trg_str, num_pred_str]
+            reward[idx] = alpha_ndcg_at_k(r_2d, topk, method=1, alpha=0.5)
     return reward
 
 
-def compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping, reward_type, topk):
+def compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping, reward_type, topk, match_type="exact"):
     phrase_reward = np.zeros((batch_size, num_predictions))
     if reward_shaping:
         for t in range(num_predictions):
             pred_str_2dlist_at_t = [pred_str_list[:t + 1] for pred_str_list in pred_str_2dlist]
-            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk)
+            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk, match_type)
     else:
         phrase_reward[:, num_predictions - 1] = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type,
-                                                               topk)
+                                                               topk, match_type)
     return phrase_reward
 
 
@@ -99,5 +115,22 @@ def compute_pg_loss(log_likelihood, output_mask, q_val_sample):
 
 
 if __name__ == "__main__":
-    reward = np.array([[1,3,5,6],[2,3,5,9]])
-    print(shape_reward(reward))
+    #reward = np.array([[1,3,5,6],[2,3,5,9]])
+    #print(shape_reward(reward))
+
+    #pred_str_list = [['multi', 'agent', 'system'], ['agent', 'warning'], ['multi', 'agent'], ['agent'], ['agent', 'system'], ['multi', 'system'], ['what', 'is']]
+    #trg_str_list = [['multi', 'agent', 'system'], ['multi'], ['what', 'is']]
+    #print(compute_match_result_new(trg_str_list, pred_str_list, type='exact'))
+    #print(compute_match_result_new(trg_str_list, pred_str_list, type='sub'))
+    #print(compute_match_result_new(trg_str_list, pred_str_list, type='exact', dimension=2))
+    #print(compute_match_result_new(trg_str_list, pred_str_list, type='sub', dimension=2))
+
+    #r = np.array([2, 1, 2, 0])
+    #print(ndcg_at_k(r, 4, method=1))  # 0.96519546960144276
+
+    r_2d = np.array([[0, 0, 0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                     [0, 0, 0, 0, 0, 0, 1, 0, 0, 0], [1, 1, 1, 0 ,0 ,0 ,0 ,0 ,0 ,0], [0, 0, 0, 0, 1, 1, 0, 1, 0, 0]])
+    print(alpha_ndcg_at_k(r_2d, 9))
+    r_2d = r_2d[:, np.array([0, 4, 6, 1, 5, 2, 7, 8, 9])]
+    print(alpha_ndcg_at_k(r_2d, 9))
+    pass

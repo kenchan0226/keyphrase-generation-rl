@@ -25,6 +25,7 @@ class SequenceGenerator(object):
                  max_sequence_length,
                  copy_attn=False,
                  coverage_attn=False,
+                 review_attn=False,
                  include_attn_dist=True,
                  length_penalty_factor=0.0,
                  coverage_penalty_factor=0.0,
@@ -64,6 +65,7 @@ class SequenceGenerator(object):
         self.copy_attn = copy_attn
         self.global_scorer = GNMTGlobalScorer(length_penalty_factor, coverage_penalty_factor, coverage_penalty, length_penalty)
         self.cuda = cuda
+        self.review_attn = review_attn
         if n_best is None:
             self.n_best = self.beam_size
         else:
@@ -97,9 +99,16 @@ class SequenceGenerator(object):
 
         if self.coverage_attn:  # init coverage
             #coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, src_len]
-            coverage = src.new_zeros((batch_size * beam_size, max_src_len), dtype=torch.float)  # [batch_size * beam_size ,1]
+            coverage = src.new_zeros((batch_size * beam_size, max_src_len), dtype=torch.float)  # [batch_size * beam_size, max_src_len]
         else:
             coverage = None
+
+        if self.review_attn:
+            decoder_memory_bank = decoder_init_state[-1, :, :].unsqueeze(1)  # [batch, 1, decoder_size]
+            decoder_memory_bank = decoder_memory_bank.repeat(beam_size, 1, 1)
+            assert decoder_memory_bank.size() == torch.Size([batch_size * beam_size, 1, self.decoder_size])
+        else:
+            decoder_memory_bank = None
 
         # expand memory_bank, src_mask
         memory_bank = memory_bank.repeat(beam_size, 1, 1)  # [batch * beam_size, max_src_len, memory_bank_size]
@@ -140,8 +149,11 @@ class SequenceGenerator(object):
             # run one step of decoding
             # [flattened_batch, vocab_size], [dec_layers, flattened_batch, decoder_size], [flattened_batch, memory_bank_size], [flattened_batch, src_len], [flattened_batch, src_len]
             decoder_dist, decoder_state, context, attn_dist, _, coverage = \
-                self.model.decoder(decoder_input, decoder_state, memory_bank, src_mask, max_num_oov, src_oov, coverage)
+                self.model.decoder(decoder_input, decoder_state, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank)
             log_decoder_dist = torch.log(decoder_dist + EPS)
+
+            if self.review_attn:
+                decoder_memory_bank = torch.cat([decoder_memory_bank, decoder_state[-1, :, :].unsqueeze(1)], dim=1)  # [batch_size * beam_size, t+1, decoder_size]
 
             # Compute a vector of batch x beam word scores
             log_decoder_dist = log_decoder_dist.view(beam_size, batch_size, -1)  # [beam_size, batch_size, vocab_size]
@@ -150,7 +162,7 @@ class SequenceGenerator(object):
             # Advance each beam
             for batch_idx, beam in enumerate(beam_list):
                 beam.advance(log_decoder_dist[:, batch_idx], attn_dist[:, batch_idx, :src_lens[batch_idx]])
-                self.beam_decoder_state_update(batch_idx, beam.get_current_origin(), decoder_state)
+                self.beam_decoder_state_update(batch_idx, beam.get_current_origin(), decoder_state, decoder_memory_bank)
 
         # Extract sentences from beam.
         result_dict = self._from_beam(beam_list)
@@ -176,7 +188,7 @@ class SequenceGenerator(object):
             # torch.stack(attn): FloatTensor, with size: [output sequence length, src_len]
         return ret
 
-    def beam_decoder_state_update(self, batch_idx, beam_indices, decoder_state):
+    def beam_decoder_state_update(self, batch_idx, beam_indices, decoder_state, decoder_memory_bank=None):
         """
         :param batch_idx: int
         :param beam_indices: a long tensor of previous beam indices, size: [beam_size]
@@ -186,10 +198,16 @@ class SequenceGenerator(object):
         decoder_layers, flattened_batch_size, decoder_size = list(decoder_state.size())
         assert flattened_batch_size % self.beam_size == 0
         original_batch_size = flattened_batch_size//self.beam_size
-        # select the hidden states of a particular batch -> [dec_layers, beam_size, decoder_size]
+        # select the hidden states of a particular batch, [dec_layers, batch_size * beam_size, decoder_size] -> [dec_layers, beam_size, decoder_size]
         decoder_state_transformed = decoder_state.view(decoder_layers, self.beam_size, original_batch_size, decoder_size)[:, :, batch_idx]
         # select the hidden states of the beams specified by the beam_indices -> [dec_layers, beam_size, decoder_size]
         decoder_state_transformed.data.copy_(decoder_state_transformed.data.index_select(1, beam_indices))
+
+        if decoder_memory_bank is not None:
+            # [batch_size * beam_size, t+1, decoder_size] -> [beam_size, t-1, decoder_size]
+            decoder_memory_bank_transformed = decoder_memory_bank.view(self.beam_size, original_batch_size, -1, decoder_size)[:, batch_idx, :, :]
+            # select the hidden states of the beams specified by the beam_indices -> [beam_size, t-1, decoder_size]
+            decoder_memory_bank_transformed.data.copy_(decoder_memory_bank_transformed.data.index_select(0, beam_indices))
 
     def sample_concat(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False):
         # src, src_lens, src_oov, src_mask, oov_lists, word2idx
@@ -309,6 +327,12 @@ class SequenceGenerator(object):
         else:
             coverage = None
 
+        if self.review_attn:
+            decoder_memory_bank = h_t_init[-1, :, :].unsqueeze(1)  # [batch, 1, decoder_size]
+            assert decoder_memory_bank.size() == torch.Size([batch_size, 1, self.model.decoder_size])
+        else:
+            decoder_memory_bank = None
+
         # init y_t to be BOS token
         y_t_init = src.new_ones(batch_size) * self.bos_idx  # [batch_size]
         sample_list = [{"prediction": [], "attention": [], "done": False} for _ in range(batch_size)]
@@ -365,6 +389,10 @@ class SequenceGenerator(object):
                 h_t = h_t_next
                 y_t = y_t_next
 
+            if self.review_attn:
+                if t > 0:
+                    decoder_memory_bank = torch.cat([decoder_memory_bank, h_t[-1, :, :].unsqueeze(1)], dim=1)  # [batch, t+1, decoder_size]
+
             # Turn any copied words to UNKS
             if self.copy_attn:
                 y_t = y_t.masked_fill(
@@ -372,7 +400,7 @@ class SequenceGenerator(object):
 
             # [batch, vocab_size], [dec_layers, batch, decoder_size], [batch, memory_bank_size], [batch, src_len], [batch, src_len]
             decoder_dist, h_t_next, context, attn_dist, _, coverage = \
-                self.model.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage)
+                self.model.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank)
 
             if greedy:  # greedy decoding, only use in self-critical
                 selected_token_dist, prediction = torch.max(decoder_dist, 1)

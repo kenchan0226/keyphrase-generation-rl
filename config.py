@@ -242,9 +242,12 @@ def train_opts(parser):
                         help='Maximum prediction length.')
     parser.add_argument('-topk', type=int, default=10,
                         help='The only pick the top k predictions in reward.')
-    parser.add_argument('-reward_type', default='f1',
-                        choices=['f1', 'ndcg', 'acc', 're'],
-                        help="""Type of reward. re stands for recall.""")
+    parser.add_argument('-reward_type', default='f1', type=int,
+                        choices=[0, 1, 2, 3, 4],
+                        help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg.""")
+    parser.add_argument('-match_type', default='exact',
+                        choices=['exact', 'sub'],
+                        help="""Either exact matching or substring matching.""")
     parser.add_argument('-pretrained_model', default="",
                         help="The path of pretrained model. Only effective in RL")
     parser.add_argument('-reward_shaping', action="store_true", default=False,

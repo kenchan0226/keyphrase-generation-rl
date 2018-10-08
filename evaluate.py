@@ -76,6 +76,17 @@ def evaluate_reward(data_loader, generator, opt):
     final_reward_sum = 0.0
     total_batch = 0
     sample_time_total = 0.0
+    topk = opt.topk
+    reward_type = opt.reward_type
+    match_type = opt.match_type
+    eos_idx = opt.word2idx[pykp.io.EOS_WORD]
+    delimiter_word = opt.delimiter_word
+    one2many = opt.one2many
+    one2many_mode = opt.one2many_mode
+    if one2many and one2many_mode > 1:
+        num_predictions = opt.num_predictions
+    else:
+        num_predictions = 1
 
     with torch.no_grad():
         for batch_i, batch in enumerate(data_loader):
@@ -93,18 +104,7 @@ def evaluate_reward(data_loader, generator, opt):
             #trg_mask = trg_mask.to(opt.device)
             #trg_oov = trg_oov.to(opt.device)
 
-            eos_idx = opt.word2idx[pykp.io.EOS_WORD]
-            delimiter_word = opt.delimiter_word
             batch_size = src.size(0)
-            topk = opt.topk
-            reward_type = opt.reward_type
-
-            one2many = opt.one2many
-            one2many_mode = opt.one2many_mode
-            if one2many and one2many_mode > 1:
-                num_predictions = opt.num_predictions
-            else:
-                num_predictions = 1
 
             start_time = time.time()
             # sample a sequence
@@ -117,7 +117,7 @@ def evaluate_reward(data_loader, generator, opt):
             sample_time = time_since(start_time)
             sample_time_total += sample_time
 
-            final_reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type, topk) # np.array, [batch_size]
+            final_reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type, topk, match_type) # np.array, [batch_size]
 
             final_reward_sum += final_reward.sum(0)
 
