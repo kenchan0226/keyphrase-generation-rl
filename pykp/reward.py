@@ -136,7 +136,14 @@ if __name__ == "__main__":
 
     r_2d = np.array([[0, 0, 0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                      [0, 0, 0, 0, 0, 0, 1, 0, 0, 0], [1, 1, 1, 0 ,0 ,0 ,0 ,0 ,0 ,0], [0, 0, 0, 0, 1, 1, 0, 1, 0, 0]])
-    print(alpha_ndcg_at_k(r_2d, 9))
+    k_list = [1,2,3]
+    print(alpha_ndcg_at_ks(r_2d, k_list))
     r_2d = r_2d[:, np.array([0, 4, 6, 1, 5, 2, 7, 8, 9])]
-    print(alpha_ndcg_at_k(r_2d, 9))
+    print(alpha_ndcg_at_ks(r_2d, k_list))
+
+    '''
+    r = np.array([0,1,1,0,1,0])
+    k_list = [4, 6]
+    print(average_precision_at_ks(r, k_list, num_trgs=5, num_predictions=6))
+    '''
     pass
