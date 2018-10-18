@@ -58,7 +58,7 @@ def check_duplicate_keyphrases(keyphrase_str_list):
     return not_duplicate
 
 
-def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list):
+def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list, match_by_str=False):
     """
     :param src_str: stemmed word list of source text
     :param keyphrase_str_list: stemmed list of word list
@@ -71,27 +71,32 @@ def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list):
     keyphrase_set = set()
 
     for i, keyphrase_word_list in enumerate(keyphrase_str_list):
-        if '_'.join(keyphrase_word_list) in keyphrase_set:
+        joined_keyphrase_str = ' '.join(keyphrase_word_list)
+        if joined_keyphrase_str in keyphrase_set:
             not_duplicate[i] = False
         else:
             not_duplicate[i] = True
-
-        # check if it appears in source text
-        for src_start_idx in range(len(src_str) - len(keyphrase_word_list) + 1):
-            match = True
-            for keyphrase_i, keyphrase_w in enumerate(keyphrase_word_list):
-                src_w = src_str[src_start_idx + keyphrase_i]
-                if src_w != keyphrase_w:
-                    match = False
+        if not match_by_str:  # match by word
+            # check if it appears in source text
+            for src_start_idx in range(len(src_str) - len(keyphrase_word_list) + 1):
+                match = True
+                for keyphrase_i, keyphrase_w in enumerate(keyphrase_word_list):
+                    src_w = src_str[src_start_idx + keyphrase_i]
+                    if src_w != keyphrase_w:
+                        match = False
+                        break
+                if match:
                     break
             if match:
-                break
-
-        if match:
-            is_present[i] = True
-        else:
-            is_present[i] = False
-        keyphrase_set.add('_'.join(keyphrase_word_list))
+                is_present[i] = True
+            else:
+                is_present[i] = False
+        else:  # match by str
+            if joined_keyphrase_str in ' '.join(src_str):
+                is_present[i] = True
+            else:
+                is_present[i] = False
+        keyphrase_set.add(joined_keyphrase_str)
 
     return is_present, not_duplicate
 
@@ -180,6 +185,8 @@ def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, top
     if num_predictions > topk:
         is_match = is_match[:topk]
         num_predictions_k = topk
+    else:
+        num_predictions_k = num_predictions
 
     num_matches_k = sum(is_match)
 
@@ -323,8 +330,11 @@ def ndcg_at_k(r, k, method=1, include_dcg=False):
         dcg = 0.0
     else:
         dcg_max = dcg_at_k(np.array(sorted(r, reverse=True)), k, method)
-        dcg = dcg_at_k(r, k, method)
-        ndcg = dcg / dcg_max
+        if dcg_max <= 0.0:
+            ndcg = 0.0
+        else:
+            dcg = dcg_at_k(r, k, method)
+            ndcg = dcg / dcg_max
     if include_dcg:
         return ndcg, dcg
     else:
@@ -356,7 +366,7 @@ def alpha_dcg_at_k(r_2d, k, method=1, alpha=0.5):
     :return:
     """
     if r_2d.shape[-1] == 0:
-        alpha_dcg = 0
+        alpha_dcg = 0.0
     else:
         # convert r_2d to gain vector
         num_trg_str, num_pred_str = r_2d.shape
@@ -380,7 +390,7 @@ def alpha_dcg_at_ks(r_2d, k_list, method=1, alpha=0.5):
     :return:
     """
     if r_2d.shape[-1] == 0:
-        return [0] * len(k_list)
+        return [0.0] * len(k_list)
     # convert r_2d to gain vector
     num_trg_str, num_pred_str = r_2d.shape
     k_max = max(k_list)
@@ -403,16 +413,19 @@ def alpha_ndcg_at_k(r_2d, k, method=1, alpha=0.5, include_dcg=False):
     :return:
     """
     if r_2d.shape[-1] == 0:
-        alpha_ndcg = 0
-        alpha_dcg = 0
+        alpha_ndcg = 0.0
+        alpha_dcg = 0.0
     else:
         # convert r to gain vector
         alpha_dcg = alpha_dcg_at_k(r_2d, k, method, alpha)
         # compute alpha_dcg_max
         r_2d_ideal = compute_ideal_r_2d(r_2d, k, alpha)
         alpha_dcg_max = alpha_dcg_at_k(r_2d_ideal, k, method, alpha)
-        alpha_ndcg = alpha_dcg / alpha_dcg_max
-        alpha_ndcg = np.nan_to_num(alpha_ndcg)
+        if alpha_dcg_max <= 0.0:
+            alpha_ndcg = 0.0
+        else:
+            alpha_ndcg = alpha_dcg / alpha_dcg_max
+            alpha_ndcg = np.nan_to_num(alpha_ndcg)
     if include_dcg:
         return alpha_ndcg, alpha_dcg
     else:
@@ -516,8 +529,8 @@ def main(opt):
         pred_output_file = open(os.path.join(opt.filtered_pred_path, "predictions_filtered.txt"), "w")
 
     # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
-    score_dict_all = defaultdict(list)
-    topk_dict = {'present': [5, 10], 'absent': [10, 50], 'all': [10, 20]}
+    score_dict = defaultdict(list)
+    topk_dict = {'present': [5, 10, 15], 'absent': [5, 10, 15, 50], 'all': [5, 10, 15]}
     num_src = 0
     num_unique_predictions = 0
     num_unique_present_predictions = 0
@@ -544,7 +557,7 @@ def main(opt):
         # is_present: boolean np array indicate whether a predicted keyphrase is present in src
         # not_duplicate: boolean np array indicate
         trg_str_is_present, trg_str_not_duplicate = check_present_and_duplicate_keyphrases(stemmed_src_str,
-                                                                                           stemmed_trg_str_list)
+                                                                                           stemmed_trg_str_list, opt.match_by_str)
         current_unique_targets = sum(trg_str_not_duplicate)
         if current_unique_targets > max_unique_targets:
             max_unique_targets = current_unique_targets
@@ -558,7 +571,7 @@ def main(opt):
 
         # a list of boolean indicates which predicted keyphrases present in src, for the duplicated keyphrases after stemming, only consider the first one
         pred_str_is_present, pred_str_not_duplicate = check_present_and_duplicate_keyphrases(stemmed_src_str,
-                                                                                             stemmed_pred_str_list)
+                                                                                             stemmed_pred_str_list, opt.match_by_str)
         num_unique_predictions += sum(pred_str_not_duplicate)
 
         # Only keep the first one-word prediction, remove all the remaining keyphrases that only has one word.
@@ -570,7 +583,7 @@ def main(opt):
         tmp_trg_str_filter = trg_str_not_duplicate
         tmp_pred_str_filter = pred_str_not_duplicate * pred_str_is_valid * extra_one_word_seqs_mask
 
-        # Compute NDCG for the all results include both present and absent keyphrases
+        # Compute metrics for all the keyphrases including both present and absent
         filtered_stemmed_trg_str_list_all = [word_list for word_list, is_keep in
                                          zip(stemmed_trg_str_list, tmp_trg_str_filter)
                                          if
@@ -594,17 +607,17 @@ def main(opt):
 
         for topk, precision_k, recall_k, f1_k, num_matches_k, num_predictions_k, ndcg_k, dcg_k, alpha_ndcg_k, alpha_dcg_k, ap_k in \
                 zip(topk_dict['all'], precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks, ndcg_ks, dcg_ks, alpha_ndcg_ks, alpha_dcg_ks, ap_ks):
-            score_dict_all['precision@%d_all' % (topk)].append(precision_k)
-            score_dict_all['recall@%d_all' % (topk)].append(recall_k)
-            score_dict_all['f1_score@%d_all' % (topk)].append(f1_k)
-            score_dict_all['num_matches@%d_all' % (topk)].append(num_matches_k)
-            score_dict_all['num_predictions@%d_all' % (topk)].append(num_predictions_k)
-            score_dict_all['num_targets@%d_all' % (topk)].append(num_filtered_targets_all)
-            score_dict_all['DCG@%d_all' % (topk)].append(dcg_k)
-            score_dict_all['NDCG@%d_all' % (topk)].append(ndcg_k)
-            score_dict_all['AlphaDCG@%d_all' % (topk)].append(alpha_dcg_k)
-            score_dict_all['AlphaNDCG@%d_all' % (topk)].append(alpha_ndcg_k)
-            score_dict_all['AP@%d_all' % (topk)].append(ap_k)
+            score_dict['precision@%d_all' % (topk)].append(precision_k)
+            score_dict['recall@%d_all' % (topk)].append(recall_k)
+            score_dict['f1_score@%d_all' % (topk)].append(f1_k)
+            score_dict['num_matches@%d_all' % (topk)].append(num_matches_k)
+            score_dict['num_predictions@%d_all' % (topk)].append(num_predictions_k)
+            score_dict['num_targets@%d_all' % (topk)].append(num_filtered_targets_all)
+            score_dict['DCG@%d_all' % (topk)].append(dcg_k)
+            score_dict['NDCG@%d_all' % (topk)].append(ndcg_k)
+            score_dict['AlphaDCG@%d_all' % (topk)].append(alpha_dcg_k)
+            score_dict['AlphaNDCG@%d_all' % (topk)].append(alpha_ndcg_k)
+            score_dict['AP@%d_all' % (topk)].append(ap_k)
 
         # Filter for present keyphrase prediction
         trg_str_filter_present = tmp_trg_str_filter * trg_str_is_present
@@ -677,24 +690,18 @@ def main(opt):
 
             for topk, precision_k, recall_k, f1_k, num_matches_k, num_predictions_k, ndcg_k, dcg_k, alpha_ndcg_k, alpha_dcg_k, ap_k in \
                     zip(topk_dict[present_tag], precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks, ndcg_ks, dcg_ks, alpha_ndcg_ks, alpha_dcg_ks, ap_ks):
-                score_dict_all['precision@%d_%s' % (topk, present_tag)].append(precision_k)
-                score_dict_all['recall@%d_%s' % (topk, present_tag)].append(recall_k)
-                score_dict_all['f1_score@%d_%s' % (topk, present_tag)].append(f1_k)
-                score_dict_all['num_matches@%d_%s' % (topk, present_tag)].append(num_matches_k)
-                score_dict_all['num_predictions@%d_%s' % (topk, present_tag)].append(num_predictions_k)
-                score_dict_all['num_targets@%d_%s' % (topk, present_tag)].append(num_filtered_targets)
+                score_dict['precision@%d_%s' % (topk, present_tag)].append(precision_k)
+                score_dict['recall@%d_%s' % (topk, present_tag)].append(recall_k)
+                score_dict['f1_score@%d_%s' % (topk, present_tag)].append(f1_k)
+                score_dict['num_matches@%d_%s' % (topk, present_tag)].append(num_matches_k)
+                score_dict['num_predictions@%d_%s' % (topk, present_tag)].append(num_predictions_k)
+                score_dict['num_targets@%d_%s' % (topk, present_tag)].append(num_filtered_targets)
 
-                score_dict_all['DCG@%d_%s' % (topk, present_tag)].append(dcg_k)
-                score_dict_all['NDCG@%d_%s' % (topk, present_tag)].append(ndcg_k)
-                score_dict_all['AlphaDCG@%d_%s' % (topk, present_tag)].append(alpha_dcg_k)
-                score_dict_all['AlphaNDCG@%d_%s' % (topk, present_tag)].append(alpha_ndcg_k)
-                score_dict_all['AP@%d_%s' % (topk, present_tag)].append(ap_k)
-
-        marco_avg_precison_10_present = sum(score_dict_all['precision@10_present']) / len(score_dict_all['precision@10_present'])
-        micro_avg_precision_10_present = sum(score_dict_all['num_matches@10_present']) / sum(score_dict_all['num_predictions@10_present'])
-
-        #print("Result dict all:")
-        #print(score_dict_all)
+                score_dict['DCG@%d_%s' % (topk, present_tag)].append(dcg_k)
+                score_dict['NDCG@%d_%s' % (topk, present_tag)].append(ndcg_k)
+                score_dict['AlphaDCG@%d_%s' % (topk, present_tag)].append(alpha_dcg_k)
+                score_dict['AlphaNDCG@%d_%s' % (topk, present_tag)].append(alpha_ndcg_k)
+                score_dict['AP@%d_%s' % (topk, present_tag)].append(ap_k)
 
         if opt.export_filtered_pred:
             pred_print_out = ''
@@ -713,93 +720,124 @@ def main(opt):
             pred_print_out += '\n'
             pred_output_file.write(pred_print_out)
 
+        if opt.debug:
+            if num_src >= 43:
+                marco_avg_recall_10_absent = float(sum(score_dict['recall@10_absent'])) / float(len(score_dict['recall@10_absent']))
+                micro_avg_recall_10_absent = float(sum(score_dict['num_matches@10_absent'])) / float(sum(score_dict['num_targets@10_absent']))
+                print("marco avg. recall@10: %.5f" % marco_avg_recall_10_absent)
+                print("micro avg. recall@10: %.5f" % micro_avg_recall_10_absent)
+                print(".")
+                break
 
     if opt.export_filtered_pred:
         pred_output_file.close()
 
-    logging.info('Total number of samples: %d' % num_src)
-    logging.info('Total number of unique predictions: %d' % num_unique_predictions)
+    result_txt_str = ""
+    result_list = []
+    result_list_ranking = []
+    field_list = []
+    field_list_ranking = []
 
-    num_unique_filtered_predictions = num_unique_present_filtered_predictions+num_unique_absent_filtered_predictions
-    num_unique_filtered_targets = num_unique_present_filtered_targets+num_unique_absent_filtered_targets
+    result_txt_str += ('Total #samples: %d\n' % num_src)
+    result_txt_str += ('Total #unique predictions: %d\n' % num_unique_predictions)
 
-    logging.info('Avg. filtered targets per src: %.2f' % (num_unique_filtered_targets/num_src))
-    logging.info('Max. unique targets per src: %d' % (max_unique_targets))
+    total_num_unique_filtered_predictions = num_unique_present_filtered_predictions+num_unique_absent_filtered_predictions
+    total_num_unique_filtered_targets = num_unique_present_filtered_targets+num_unique_absent_filtered_targets
 
-    logging.info("====================All======================")
-    for topk in topk_dict['all']:
-        total_predictions = sum(score_dict_all['num_predictions@%d_all' % (topk)])
-        total_targets = sum(score_dict_all['num_targets@%d_all' % (topk)])
+    result_txt_str += ('Avg. filtered targets per src: %.2f\n' % (total_num_unique_filtered_targets/num_src))
+    result_txt_str += ('Max. unique targets per src: %d\n' % (max_unique_targets))
+
+    for present_tag in ['all', 'present', 'absent']:
+        if present_tag == "all":
+            num_unique_filtered_predictions = total_num_unique_filtered_predictions
+            num_unique_filtered_targets = total_num_unique_filtered_targets
+        elif present_tag == 'present':
+            num_unique_filtered_predictions = num_unique_present_filtered_predictions
+            num_unique_filtered_targets = num_unique_present_filtered_targets
+        else:  # absent
+            num_unique_filtered_predictions = num_unique_absent_filtered_predictions
+            num_unique_filtered_targets = num_unique_absent_filtered_targets
+
+        result_txt_str += "===================================%s====================================\n" % (present_tag)
+        result_txt_str += "#unique predictions: %d/%d\t#unique targets:%d/%d\n" % \
+                             (num_unique_filtered_predictions, total_num_unique_filtered_predictions, num_unique_filtered_targets, total_num_unique_filtered_targets)
+        classification_output_str, classification_field_list, classification_result_list = report_classification_scores(score_dict, topk_dict[present_tag], present_tag)
+        ranking_output_str, ranking_field_list, ranking_result_list = report_ranking_scores(score_dict, topk_dict[present_tag], present_tag)
+        result_txt_str += classification_output_str
+        result_txt_str += ranking_output_str
+        field_list += classification_field_list
+        field_list += ranking_field_list
+        field_list_ranking += ranking_field_list
+        result_list += classification_result_list
+        result_list += ranking_result_list
+        result_list_ranking += ranking_result_list
+
+    results_txt_file = open(os.path.join(opt.exp_path, "results_log.txt"), "w")
+    results_txt_file.write(result_txt_str)
+    results_txt_file.close()
+
+    results_tsv_file = open(os.path.join(opt.exp_path, "results_log.tsv"), "w")
+    results_tsv_file.write('\t'.join(field_list) + '\n')
+    results_tsv_file.write('\t'.join('%.5f' % result for result in result_list) + '\n')
+    results_tsv_file.close()
+
+    results_tsv_file = open(os.path.join(opt.exp_path, "results_log_ranking.tsv"), "w")
+    results_tsv_file.write('\t'.join(field_list_ranking) + '\n')
+    results_tsv_file.write('\t'.join('%.5f' % result for result in result_list_ranking) + '\n')
+    results_tsv_file.close()
+    return
+
+
+def report_classification_scores(score_dict, topk_list, present_tag):
+    output_str = ""
+    result_list = []
+    field_list = []
+    for topk in topk_list:
+        total_predictions_k = sum(score_dict['num_predictions@%d_%s' % (topk, present_tag)])
+        total_targets_k = sum(score_dict['num_targets@%d_%s' % (topk, present_tag)])
+        total_num_matches_k = sum(score_dict['num_matches@%d_%s' % (topk, present_tag)])
         # Compute the micro averaged recall, precision and F-1 score
         micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k = compute_classification_metrics(
-            sum(score_dict_all['num_matches@%d_all' % (topk)]), total_predictions, total_targets)
-        logging.info('micro_avg_precision@%d_all:%.5f' % (topk, micro_avg_precision_k))
-        logging.info('micro_avg_recall@%d_all:%.5f' % (topk, micro_avg_recall_k))
-        logging.info('micro_avg_f1_score@%d_all:%.5f' % (topk, micro_avg_f1_score_k))
+            total_num_matches_k, total_predictions_k, total_targets_k)
+        # Compute the macro averaged recall, precision and F-1 score
+        macro_avg_precision_k = sum(score_dict['precision@%d_%s' % (topk, present_tag)]) / len(
+            score_dict['precision@%d_%s' % (topk, present_tag)])
+        marco_avg_recall_k = sum(score_dict['recall@%d_%s' % (topk, present_tag)]) / len(
+            score_dict['recall@%d_%s' % (topk, present_tag)])
+        marco_avg_f1_score_k = float(2 * macro_avg_precision_k * marco_avg_recall_k) / (
+                macro_avg_precision_k + marco_avg_recall_k)
+        output_str += ("Begin===============classification metrics %s@%d===============Begin\n" % (present_tag, topk))
+        output_str += ("#target: %d, #predictions: %d, #corrects: %d\n" % (total_predictions_k, total_targets_k, total_num_matches_k))
+        output_str += "Micro:\tP@%d=%.5f\tR@%d=%.5f\tF1@%d=%.5f\n" % (topk, micro_avg_precision_k, topk, micro_avg_recall_k, topk, micro_avg_f1_score_k)
+        output_str += "Macro:\tP@%d=%.5f\tR@%d=%.5f\tF1@%d=%.5f\n" % (topk, macro_avg_precision_k, topk, marco_avg_recall_k, topk, marco_avg_f1_score_k)
+        field_list += ['micro_avg_p@%d_%s' % (topk, present_tag), 'micro_avg_r@%d_%s' % (topk, present_tag), 'micro_avg_f1@%d_%s' % (topk, present_tag)]
+        result_list += [micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k]
+    return output_str, field_list, result_list
 
-        avg_dcg = sum(score_dict_all['DCG@%d_all' % (topk)]) / len(
-            score_dict_all['DCG@%d_all' % (topk)])
-        avg_ndcg = sum(score_dict_all['NDCG@%d_all' % (topk)]) / len(
-            score_dict_all['NDCG@%d_all' % (topk)])
-        avg_alpha_dcg = sum(score_dict_all['AlphaDCG@%d_all' % (topk)]) / len(
-            score_dict_all['AlphaDCG@%d_all' % (topk)])
-        avg_alpha_ndcg = sum(score_dict_all['AlphaNDCG@%d_all' % (topk)]) / len(
-            score_dict_all['AlphaNDCG@%d_all' % (topk)])
-        map = sum(score_dict_all['AP@%d_all' % (topk)]) / len(
-            score_dict_all['AP@%d_all' % (topk)])
-        logging.info('avg_DCG@%d_all: %.5f' % (topk, avg_dcg))
-        logging.info('avg_NDCG@%d_all: %.5f' % (topk, avg_ndcg))
-        logging.info('avg_Alpha_DCG@%d_all: %.5f' % (topk, avg_alpha_dcg))
-        logging.info('avg_Alpha_NDCG@%d_all: %.5f' % (topk, avg_alpha_ndcg))
-        logging.info('MAP@%d_all: %.5f' % (topk, map))
 
-    for is_present in [True, False]:
-        if is_present:
-            present_tag = 'present'
-            logging.info("====================Present======================")
-            logging.info("Total number of unique present predictions: %d/%d" % (num_unique_present_predictions, num_unique_predictions))
-            logging.info("Total number of unique present predictions after filtering: %d/%d" % (num_unique_present_filtered_predictions, num_unique_filtered_predictions))
-            logging.info("Total number of present targets after filtering: %d/%d" % (num_unique_present_filtered_targets, num_unique_filtered_targets))
-        else:
-            present_tag = 'absent'
-            logging.info("====================Absent======================")
-            logging.info("Total number of unique absent predictions: %d/%d" % (num_unique_absent_predictions,num_unique_predictions))
-            logging.info(
-                "Total number of unique absent predictions after filtering: %d/%d" % (num_unique_absent_filtered_predictions, num_unique_filtered_predictions))
-            logging.info("Total number of absent targets after filtering: %d/%d" % (num_unique_absent_filtered_targets, num_unique_filtered_targets))
+def report_ranking_scores(score_dict, topk_list, present_tag):
+    output_str = ""
+    result_list = []
+    field_list = []
+    for topk in topk_list:
+        avg_dcg_k = sum(score_dict['DCG@%d_%s' % (topk, present_tag)]) / len(
+            score_dict['DCG@%d_%s' % (topk, present_tag)])
+        avg_ndcg_k = sum(score_dict['NDCG@%d_%s' % (topk, present_tag)]) / len(
+            score_dict['NDCG@%d_%s' % (topk, present_tag)])
+        avg_alpha_dcg_k = sum(score_dict['AlphaDCG@%d_%s' % (topk, present_tag)]) / len(
+            score_dict['AlphaDCG@%d_%s' % (topk, present_tag)])
+        avg_alpha_ndcg_k = sum(score_dict['AlphaNDCG@%d_%s' % (topk, present_tag)]) / len(
+            score_dict['AlphaNDCG@%d_%s' % (topk, present_tag)])
+        map_k = sum(score_dict['AP@%d_%s' % (topk, present_tag)]) / len(
+            score_dict['AP@%d_%s' % (topk, present_tag)])
+        output_str += ("Begin==================Ranking metrics %s@%d==================Begin\n" % (present_tag, topk))
+        output_str += "Relevance:\tDCG@%d=%.5f\tNDCG@%d=%.5f\tMAP@%d=%.5f\n" % (topk, avg_dcg_k, topk, avg_ndcg_k, topk, map_k)
+        output_str += "Diversity:\tAlphaDCG@%d=%.5f\tAlphaNDCG@%d=%.5f\n" % (topk, avg_alpha_dcg_k, topk, avg_alpha_ndcg_k)
+        field_list += ['avg_DCG@%d_%s' % (topk, present_tag), 'avg_NDCG@%d_%s' % (topk, present_tag),
+                       'MAP@%d_%s' % (topk, present_tag), 'AlphaDCG@%d_%s' % (topk, present_tag), 'AlphaNDCG@%d_%s' % (topk, present_tag)]
+        result_list += [avg_dcg_k, avg_ndcg_k, map_k, avg_alpha_dcg_k, avg_alpha_ndcg_k]
+    return output_str, field_list, result_list
 
-        logging.info('Final Results (%s):' % present_tag)
-        for topk in topk_dict[present_tag]:
-            total_predictions = sum(score_dict_all['num_predictions@%d_%s' % (topk, present_tag)])
-            total_targets = sum(score_dict_all['num_targets@%d_%s' % (topk, present_tag)])
-            # Compute the micro averaged recall, precision and F-1 score
-            micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k = compute_classification_metrics(sum(score_dict_all['num_matches@%d_%s' % (topk, present_tag)]), total_predictions, total_targets)
-            logging.info('micro_avg_precision@%d_%s:%.5f' % (topk, present_tag, micro_avg_precision_k))
-            logging.info('micro_avg_recall@%d_%s:%.5f' % (topk, present_tag, micro_avg_recall_k))
-            logging.info('micro_avg_f1_score@%d_%s:%.5f' % (topk, present_tag, micro_avg_f1_score_k))
-            # Compute the macro averaged recall, precision and F-1 score
-            macro_avg_precision_k = sum(score_dict_all['precision@%d_%s' % (topk, present_tag)])/len(score_dict_all['precision@%d_%s' % (topk, present_tag) ])
-            marco_avg_recall_k = sum(score_dict_all['recall@%d_%s' % (topk, present_tag)])/len(score_dict_all['recall@%d_%s' % (topk, present_tag) ])
-            marco_avg_f1_score_k = float(2*macro_avg_precision_k*marco_avg_recall_k)/(macro_avg_precision_k+marco_avg_recall_k)
-            logging.info('macro_avg_precision@%d_%s: %.5f' % (topk, present_tag, macro_avg_precision_k))
-            logging.info('macro_avg_recall@%d_%s: %.5f' % (topk, present_tag, marco_avg_recall_k))
-            logging.info('macro_avg_f1_score@%d_%s: %.5f' % (topk, present_tag, marco_avg_f1_score_k))
-            avg_dcg = sum(score_dict_all['DCG@%d_%s' % (topk, present_tag)])/len(
-                score_dict_all['DCG@%d_%s' % (topk, present_tag) ])
-            avg_ndcg = sum(score_dict_all['NDCG@%d_%s' % (topk, present_tag)]) / len(
-                score_dict_all['NDCG@%d_%s' % (topk, present_tag)])
-            avg_alpha_dcg = sum(score_dict_all['AlphaDCG@%d_%s' % (topk, present_tag)]) / len(
-                score_dict_all['AlphaDCG@%d_%s' % (topk, present_tag)])
-            avg_alpha_ndcg = sum(score_dict_all['AlphaNDCG@%d_%s' % (topk, present_tag)]) / len(
-                score_dict_all['AlphaNDCG@%d_%s' % (topk, present_tag)])
-            map = sum(score_dict_all['AP@%d_%s' % (topk, present_tag)]) / len(
-                score_dict_all['AP@%d_%s' % (topk, present_tag)])
-            logging.info('avg_DCG@%d_%s: %.5f' % (topk, present_tag, avg_dcg))
-            logging.info('avg_NDCG@%d_%s: %.5f' % (topk, present_tag, avg_ndcg))
-            logging.info('avg_Alpha_DCG@%d_%s: %.5f' % (topk, present_tag, avg_alpha_dcg))
-            logging.info('avg_Alpha_NDCG@%d_%s: %.5f' % (topk, present_tag, avg_alpha_ndcg))
-            logging.info('MAP@%d_%s: %.5f' % (topk, present_tag, map))
-    return
 
 if __name__ == '__main__':
     # load settings for training

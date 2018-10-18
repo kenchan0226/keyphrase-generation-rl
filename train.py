@@ -169,6 +169,12 @@ if __name__ == "__main__":
     if opt.train_ml == opt.train_rl:
         raise ValueError("Either train with supervised learning or RL, but not both!")
 
+    if not opt.one2many and opt.one2many_mode > 0:
+        raise ValueError("You cannot choose one2many mode without the -one2many options.")
+
+    if opt.one2many and opt.one2many_mode == 0:
+        raise ValueError("If you choose one2many, you must specify the one2many mode.")
+
     logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=True)
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]

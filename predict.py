@@ -115,6 +115,15 @@ if __name__=='__main__':
     if not os.path.exists(opt.pred_path):
         os.makedirs(opt.pred_path)
 
+    if not opt.one2many and opt.one2many_mode > 0:
+        raise ValueError("You cannot choose one2many mode without the -one2many options.")
+
+    if opt.one2many and opt.one2many_mode == 0:
+        raise ValueError("If you choose one2many, you must specify the one2many mode.")
+
+    if opt.greedy and not opt.one2many:
+        raise ValueError("Greedy sampling can only be used in one2many mode.")
+
     logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=True)
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]

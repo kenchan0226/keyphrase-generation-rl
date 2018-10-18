@@ -242,7 +242,7 @@ def train_opts(parser):
                         help='Maximum prediction length.')
     parser.add_argument('-topk', type=int, default=10,
                         help='The only pick the top k predictions in reward.')
-    parser.add_argument('-reward_type', default='f1', type=int,
+    parser.add_argument('-reward_type', default='0', type=int,
                         choices=[0, 1, 2, 3, 4, 5],
                         help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg, 5: alpha-dcg.""")
     parser.add_argument('-match_type', default='exact',
@@ -277,8 +277,10 @@ def train_opts(parser):
 
     #parser.add_argument('-rl_start_epoch', default=2, type=int,
     #                    help="""from which epoch rl training starts""")
-
-
+    parser.add_argument('-perturb_std', type=float, default=0,
+                        help="The variance of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
+    parser.add_argument('-perturb_decay', type=int, default=1, choices=[0, 1],
+                        help='Specify how the std of perturbation vector decay. 0: no decay, 1: perturb_std/num_predicted_keyphrases')
 
     # GPU
 
@@ -419,8 +421,10 @@ def predict_opts(parser):
                         help="Path of experiment log/plot.")
     parser.add_argument('-one2many', action="store_true", default=False,
                         help='If true, it will not split a sample into multiple src-keyphrase pairs')
-    parser.add_argument('-one2many_mode', type=int, choices=[1, 2, 3],
-                        help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
+    parser.add_argument('-greedy', action="store_true", default=False,
+                        help='Use greedy decoding instead of sampling in one2many mode')
+    parser.add_argument('-one2many_mode', type=int, choices=[0, 1, 2, 3], default=0,
+                        help='Only effective when one2many=True. 0 is a dummy option which takes no effect. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
     #parser.add_argument('-num_predictions', type=int, default=1,
@@ -448,3 +452,7 @@ def post_predict_opts(parser):
                         help="If False, it will remove all the invalid predictions")
     parser.add_argument('-num_preds', type=int, default=50,
                         help='It will only consider the first num_preds keyphrases in each line of the prediction file')
+    parser.add_argument('-debug', action="store_true", default=False,
+                        help='Print out the metric at each step or not')
+    parser.add_argument('-match_by_str', action="store_true", default=False,
+                        help='If false, match the words at word level when checking present keyphrase. Else, match the words at string level.')

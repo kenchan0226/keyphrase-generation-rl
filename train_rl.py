@@ -154,6 +154,8 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     reward_shaping = opt.reward_shaping
     baseline = opt.baseline
     match_type = opt.match_type
+    perturb_std = opt.perturb_std
+    perturb_decay = opt.perturb_decay
 
     #generator.model.train()
 
@@ -161,8 +163,9 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
     # log_selected_token_dist: size: [batch, output_seq_len]
     start_time = time.time()
-    sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask= generator.sample(
-        src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many, one2many_mode=one2many_mode, num_predictions=num_predictions)
+    sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask = generator.sample(
+        src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
+        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, perturb_decay=perturb_decay)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
     sample_time = time_since(start_time)
     max_pred_seq_len = log_selected_token_dist.size(1)
@@ -171,11 +174,14 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     if opt.baseline == 'self':
         generator.model.eval()
         with torch.no_grad():
+            start_time = time.time()
             greedy_sample_list, _, _, greedy_eos_idx_mask = generator.sample(src, src_lens, src_oov, src_mask,
                                                                              oov_lists, opt.max_length,
                                                                              greedy=True, one2many=one2many,
                                                                              one2many_mode=one2many_mode,
-                                                                             num_predictions=num_predictions)
+                                                                             num_predictions=num_predictions,
+                                                                             perturb_std=perturb_std,
+                                                                             perturb_decay=perturb_decay)
             greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
                                                           eos_idx,
                                                           delimiter_word)
