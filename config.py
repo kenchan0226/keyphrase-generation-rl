@@ -277,10 +277,14 @@ def train_opts(parser):
 
     #parser.add_argument('-rl_start_epoch', default=2, type=int,
     #                    help="""from which epoch rl training starts""")
-    parser.add_argument('-perturb_std', type=float, default=0,
-                        help="The variance of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
+    parser.add_argument('-init_perturb_std', type=float, default=0,
+                        help="Init std of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
+    parser.add_argument('-final_perturb_std', type=float, default=0,
+                        help="Final std of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
     parser.add_argument('-perturb_decay', type=int, default=1, choices=[0, 1, 2],
-                        help='Specify how the std of perturbation vector decay. 0: no decay, 1: perturb_std/num_predicted_keyphrases, 2: preturb_std * t')
+                        help='Specify how the std of perturbation vector decay. 0: no decay, 1: exponential decay, 2: stepwise decay')
+    parser.add_argument('-perturb_decay_factor', type=float, default=0.5,
+                        help="The variance of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
 
     # GPU
 

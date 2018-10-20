@@ -12,6 +12,7 @@ import logging
 import os
 from evaluate import evaluate_reward
 from pykp.reward import *
+import math
 
 EPS = 1e-8
 
@@ -25,11 +26,27 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     report_valid_reward = []
     best_valid_reward = float('-inf')
     num_stop_increasing = 0
+    init_perturb_std = opt.init_perturb_std
+    final_perturb_std = opt.final_perturb_std
+    perturb_decay_factor = opt.perturb_decay_factor
+    perturb_decay = opt.perturb_decay
 
     if opt.train_from:  # opt.train_from:
         #TODO: load the training state
         raise ValueError("Not implemented the function of load from trained model")
         pass
+
+    generator = SequenceGenerator(model,
+                                  bos_idx=opt.word2idx[pykp.io.BOS_WORD],
+                                  eos_idx=opt.word2idx[pykp.io.EOS_WORD],
+                                  pad_idx=opt.word2idx[pykp.io.PAD_WORD],
+                                  beam_size=1,
+                                  max_sequence_length=opt.max_length,
+                                  copy_attn=opt.copy_attention,
+                                  coverage_attn=opt.coverage_attn,
+                                  review_attn=opt.review_attn,
+                                  cuda=opt.gpuid > -1
+                                  )
 
     model.train()
 
@@ -41,19 +58,14 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
         # progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,total_examples=len(train_data_loader.dataset.examples))
         for batch_i, batch in enumerate(train_data_loader):
             total_batch += 1
+            if perturb_decay == 0:  # do not decay
+                perturb_std = init_perturb_std
+            elif perturb_decay == 1:  # exponential decay
+                perturb_std = final_perturb_std + (init_perturb_std - final_perturb_std) * math.exp(-1. * total_batch * perturb_decay_factor)
+            elif perturb_decay == 2:  # steps decay
+                perturb_std = init_perturb_std * math.pow(perturb_decay_factor, math.floor((1+total_batch)/4000))
 
-            generator = SequenceGenerator(model,
-                                          bos_idx=opt.word2idx[pykp.io.BOS_WORD],
-                                          eos_idx=opt.word2idx[pykp.io.EOS_WORD],
-                                          pad_idx=opt.word2idx[pykp.io.PAD_WORD],
-                                          beam_size=1,
-                                          max_sequence_length=opt.max_length,
-                                          copy_attn=opt.copy_attention,
-                                          coverage_attn=opt.coverage_attn,
-                                          review_attn=opt.review_attn,
-                                          cuda=opt.gpuid > -1
-                                          )
-            batch_reward_stat, log_selected_token_dist = train_one_batch(batch, generator, optimizer_rl, opt)
+            batch_reward_stat, log_selected_token_dist = train_one_batch(batch, generator, optimizer_rl, opt, perturb_std)
             report_train_reward_statistics.update(batch_reward_stat)
             total_train_reward_statistics.update(batch_reward_stat)
 
@@ -119,7 +131,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     export_train_and_valid_reward(report_train_reward, report_valid_reward, opt.checkpoint_interval, train_valid_curve_path)
 
 
-def train_one_batch(one2many_batch, generator, optimizer, opt):
+def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = one2many_batch
     """
     src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
@@ -154,7 +166,6 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     reward_shaping = opt.reward_shaping
     baseline = opt.baseline
     match_type = opt.match_type
-    perturb_std = opt.perturb_std
     perturb_decay = opt.perturb_decay
 
     #generator.model.train()
@@ -165,7 +176,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
     start_time = time.time()
     sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask = generator.sample(
         src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
-        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, perturb_decay=perturb_decay)
+        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
     sample_time = time_since(start_time)
     max_pred_seq_len = log_selected_token_dist.size(1)
@@ -180,8 +191,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt):
                                                                              greedy=True, one2many=one2many,
                                                                              one2many_mode=one2many_mode,
                                                                              num_predictions=num_predictions,
-                                                                             perturb_std=perturb_std,
-                                                                             perturb_decay=perturb_decay)
+                                                                             perturb_std=perturb_std)
             greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
                                                           eos_idx,
                                                           delimiter_word)
