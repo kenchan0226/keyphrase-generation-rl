@@ -180,4 +180,3 @@ if __name__ == "__main__":
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 
     main(opt)
-

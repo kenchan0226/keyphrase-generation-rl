@@ -264,7 +264,7 @@ def train_opts(parser):
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
     parser.add_argument('-one2many', action="store_true", default=False,
                         help='If true, it will not split a sample into multiple src-keyphrase pairs')
-    parser.add_argument('-one2many_mode', type=int, default=1, choices=[1, 2, 3],
+    parser.add_argument('-one2many_mode', type=int, default=0, choices=[1, 2, 3],
                         help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
     parser.add_argument('-num_predictions', type=int, default=1,
                         help='Control the number of predictions when one2many_mode=2.')
@@ -279,8 +279,8 @@ def train_opts(parser):
     #                    help="""from which epoch rl training starts""")
     parser.add_argument('-perturb_std', type=float, default=0,
                         help="The variance of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
-    parser.add_argument('-perturb_decay', type=int, default=1, choices=[0, 1],
-                        help='Specify how the std of perturbation vector decay. 0: no decay, 1: perturb_std/num_predicted_keyphrases')
+    parser.add_argument('-perturb_decay', type=int, default=1, choices=[0, 1, 2],
+                        help='Specify how the std of perturbation vector decay. 0: no decay, 1: perturb_std/num_predicted_keyphrases, 2: preturb_std * t')
 
     # GPU
 

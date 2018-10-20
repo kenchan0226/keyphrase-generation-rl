@@ -389,6 +389,8 @@ class SequenceGenerator(object):
                                 decayed_perturb_std = perturb_std
                             elif perturb_decay == 1:
                                 decayed_perturb_std = perturb_std / pred_count.item()
+                            elif perturb_decay == 2:
+                                decayed_perturb_std = perturb_std * pred_count.item()
                             h_t = h_t + torch.normal(mean=0.0, std=torch.ones_like(h_t) * decayed_perturb_std)  # [dec_layers, batch_size, decoder_size]
                     else:  # indicator.item() == 0 or indicator.item() == 1 and pred_count.item() == num_predictions:
                         y_t.append(y_t_next[batch_idx].unsqueeze(0))
