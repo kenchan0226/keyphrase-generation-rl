@@ -20,8 +20,8 @@ For the full kp20k dataset, please download from here [here](https://www.dropbox
 ## Numericalize Data
 The `preprocess.py` script numericalizes the three pairs of source-target files, and produce the following files
 `train.one2one.pt, train.one2many.pt, valid.one2one.pt, valid.one2many.pt, test.one2one.pt, test.one2many.pt, vocab.pt`.
-The `*.one2one.pt` files are used for training in a supervised learning setting using maximum likehood.
-The `*.one2many.pt` files are used for training in a reinforcement learning (RL) setting using reward.
+The `*.one2one.pt` files which split a sample (source, {kp1, kp2, ...}) into multiple training sample (source, kp1), (source, kp2), ...
+The `*.one2many.pt` files does not split the training sample.
 
 Command:
 `python3 preprocess.py -data_dir data/[dataset]`
@@ -57,6 +57,23 @@ Some common options for the training script:
 ```
 Please read the config.py for more details about the options.
 
+### RL training
+In this work, we add a Guassian noise vector to perturb the hidden state of GRU after generated each a keyphrase to encourage exploration.
+The followings are the options for the perturbation.
+```
+-init_perturb_std [initial std of gaussian noise vector]
+-final_perturb_std [terminal std of gaussian noise vector], only effective when perturb_decay=1.
+-perturb_decay [mode of decay for the std of gaussian noise, 0: no decay, 1: exponential decay, 2: stepwise decay].
+-perturb_decay_factor [factor for the std decay], the effect depends on the value of -perturb_decay.
+-perturb_baseline, a flag for perturb the hidden state of the baseline in policy gradient training.
+```
+
+We decay the std of the Guassian noise vector using the following methods
+- Exponential decay: `\sigma = $\sigma_{T}+(\sigma_{0}-\sigma_{T}) \exp(-t * \alpha)$`,
+where $\sigma_{0}$ is the initial std, and $\sigma_{T}$ is the terminal std, $\alpha$ is the decay factor
+- Stepwise decay: the std is multiplied by decay factor after every 4000 iterations.
+
+
 ## Testing
 Examples of testing commands:
 
@@ -84,8 +101,9 @@ The options for evaluate_prediction.py:
 - [x] Beam Search
 - [x] Early Stopping of training
 - [x] Evaluation
-- [ ] Adjust the code and parameters of the baseline until we get competitive results
-- [ ] Training with RL
+- [x] Adjust the code and parameters of the baseline until we get competitive results
+- [x] Training with RL
+- [ ] Tune the RL algorithms
 
 ## References
 Abigail See, Peter J. Liu, Christopher D. Manning:
