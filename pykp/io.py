@@ -425,7 +425,7 @@ def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', inclu
             if any([w >= opt.vocab_size for w in trg_copy]):
                 oov_target += 1
 
-            if idx % 20000 == 0:
+            if idx % 100000 == 0:
                 print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
                 print('source    \n\t\t[len=%d]: %s' % (len(source), source))
                 print('target    \n\t\t[len=%d]: %s' % (len(target), target))

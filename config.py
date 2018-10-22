@@ -280,11 +280,13 @@ def train_opts(parser):
     parser.add_argument('-init_perturb_std', type=float, default=0,
                         help="Init std of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
     parser.add_argument('-final_perturb_std', type=float, default=0,
-                        help="Final std of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
+                        help="Final std of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase. Only effective when perturb_decay=1")
     parser.add_argument('-perturb_decay', type=int, default=1, choices=[0, 1, 2],
                         help='Specify how the std of perturbation vector decay. 0: no decay, 1: exponential decay, 2: stepwise decay')
     parser.add_argument('-perturb_decay_factor', type=float, default=0.5,
-                        help="The variance of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
+                        help="Specify the decay factor, only effective when perturb_decay=1 or 2")
+    parser.add_argument('-perturb_baseline', action="store_true", default=False,
+                        help="Whether to perturb the baseline or not")
 
     # GPU
 

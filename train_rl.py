@@ -166,7 +166,10 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     reward_shaping = opt.reward_shaping
     baseline = opt.baseline
     match_type = opt.match_type
-    perturb_decay = opt.perturb_decay
+    if opt.perturb_baseline:
+        baseline_perturb_std = perturb_std
+    else:
+        baseline_perturb_std = 0
 
     #generator.model.train()
 
@@ -191,7 +194,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
                                                                              greedy=True, one2many=one2many,
                                                                              one2many_mode=one2many_mode,
                                                                              num_predictions=num_predictions,
-                                                                             perturb_std=perturb_std)
+                                                                             perturb_std=baseline_perturb_std)
             greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
                                                           eos_idx,
                                                           delimiter_word)

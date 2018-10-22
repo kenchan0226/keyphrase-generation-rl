@@ -37,6 +37,37 @@ def read_tokenized_trg_file(path):
             data.append(trg_word_list)
     return data
 
+def read_src_and_trg_files(src_file, trg_file, is_train, concat_title=True):
+    tokenized_train_src = []
+    tokenized_train_trg = []
+    filtered_cnt = 0
+    for src_line, trg_line in zip(open(src_file, 'r'), open(trg_file, 'r')):
+        # process source line
+        if concat_title:
+            [title, context] = src_line.strip().split('<eos>')
+            src_word_list = title.strip().split(' ') + context.strip().split(' ')
+        else:
+            raise ValueError('Not yet implement the function of separating title and context')
+        # process target line
+        trg_list = trg_line.strip().split(';')  # a list of target sequences
+        trg_word_list = [trg.split(' ') for trg in trg_list]
+        # If it is training data, ignore the line with source length > 400 or target length > 60
+        if is_train:
+            if len(src_word_list) > 400 or len(trg_word_list) > 14:
+                filtered_cnt += 1
+                continue
+        # Append the lines to the data
+        tokenized_train_src.append(src_word_list)
+        tokenized_train_trg.append(trg_word_list)
+
+    assert len(tokenized_train_src) == len(
+        tokenized_train_trg), 'the number of records in source and target are not the same'
+
+    print("%d rows filtered" % filtered_cnt)
+
+    tokenized_train_pairs = list(zip(tokenized_train_src, tokenized_train_trg))
+    return tokenized_train_pairs
+
 def build_vocab(tokenized_src_trg_pairs):
     token_freq_counter = Counter()
     for src_word_list, trg_word_lists in tokenized_src_trg_pairs:
@@ -73,7 +104,7 @@ def build_vocab(tokenized_src_trg_pairs):
 
 def main(opt):
     # Preprocess training data
-
+    """
     # Tokenize train_src and train_trg
     tokenized_train_src = read_tokenized_src_file(opt.train_src, concat_title=True)
     tokenized_train_trg = read_tokenized_trg_file(opt.train_trg)
@@ -85,6 +116,10 @@ def main(opt):
 
     del tokenized_train_src
     del tokenized_train_trg
+    """
+
+    # Tokenize train_src and train_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
+    tokenized_train_pairs = read_src_and_trg_files(opt.train_src, opt.train_trg, is_train=True, concat_title=True)
 
     # build vocab from training src
     # build word2id, id2word, and vocab, where vocab is a counter
@@ -109,7 +144,7 @@ def main(opt):
     del train_one2many
 
     # Preprocess validation data
-
+    """
     # Tokenize
     tokenized_valid_src = read_tokenized_src_file(opt.valid_src, concat_title=True)
     tokenized_valid_trg = read_tokenized_trg_file(opt.valid_trg)
@@ -119,6 +154,9 @@ def main(opt):
     tokenized_valid_pairs = list(zip(tokenized_valid_src, tokenized_valid_trg))
     del tokenized_valid_src
     del tokenized_valid_trg
+    """
+    # Tokenize valid_src and valid_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
+    tokenized_valid_pairs = read_src_and_trg_files(opt.valid_src, opt.valid_trg, is_train=False, concat_title=True)
 
     # building preprocessed validation set for one2one and one2many training mode
     valid_one2one = pykp.io.build_dataset(
@@ -131,6 +169,7 @@ def main(opt):
     torch.save(valid_one2many, open(opt.data_dir + '/valid.one2many.pt', 'wb'))
 
     # Preprocess test data
+    """
     tokenized_test_src = read_tokenized_src_file(opt.test_src, concat_title=True)
     tokenized_test_trg = read_tokenized_trg_file(opt.test_trg)
     assert len(tokenized_test_src) == len(
@@ -139,6 +178,9 @@ def main(opt):
     tokenized_test_pairs = list(zip(tokenized_test_src, tokenized_test_trg))
     del tokenized_test_src
     del tokenized_test_trg
+    """
+    # Tokenize train_src and train_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
+    tokenized_test_pairs = read_src_and_trg_files(opt.test_src, opt.test_trg, is_train=False, concat_title=True)
 
     # building preprocessed test set for one2one and one2many training mode
     test_one2one = pykp.io.build_dataset(
