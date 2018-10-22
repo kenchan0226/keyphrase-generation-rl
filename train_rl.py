@@ -120,10 +120,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     report_train_reward.append(current_train_reward)
                     report_valid_reward.append(current_valid_reward)
 
-                    if num_stop_increasing >= opt.early_stop_tolerance:
-                        logging.info('Have not increased for %d check points, early stop training' % num_stop_increasing)
-                        early_stop_flag = True
-                        break
+                    if not opt.disable_early_stop:
+                        if num_stop_increasing >= opt.early_stop_tolerance:
+                            logging.info('Have not increased for %d check points, early stop training' % num_stop_increasing)
+                            early_stop_flag = True
+                            break
                     report_train_reward_statistics.clear()
 
     # export the training curve
