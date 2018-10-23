@@ -106,11 +106,12 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                         sys.stdout.flush()
                         num_stop_increasing += 1
                         # decay the learning rate by a factor
-                        for i, param_group in enumerate(optimizer_rl.param_groups):
-                            old_lr = float(param_group['lr'])
-                            new_lr = old_lr * opt.learning_rate_decay
-                            if old_lr - new_lr > EPS:
-                                param_group['lr'] = new_lr
+                        if not opt.disable_learning_rate_decay:
+                            for i, param_group in enumerate(optimizer_rl.param_groups):
+                                old_lr = float(param_group['lr'])
+                                new_lr = old_lr * opt.learning_rate_decay
+                                if old_lr - new_lr > EPS:
+                                    param_group['lr'] = new_lr
 
                     logging.info('Epoch: %d; batch idx: %d; total batches: %d' % (epoch, batch_i, total_batch))
                     logging.info(

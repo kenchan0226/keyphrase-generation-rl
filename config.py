@@ -309,6 +309,8 @@ def train_opts(parser):
                         help="""Starting learning rate for Reinforcement Learning.
                         Recommended settings: sgd = 1, adagrad = 0.1,
                         adadelta = 1, adam = 0.001""")
+    parser.add_argument('-disable_learning_rate_decay', action="store_true", default=False,
+                        help="""A flag to disable learning rate decay""")
     parser.add_argument('-learning_rate_decay', type=float, default=0.5,
                         help="""If update_learning_rate, decay learning rate by
                         this much if (i) perplexity does not decrease on the
@@ -328,6 +330,8 @@ def train_opts(parser):
                         help='Run validation and save model parameters at this interval.')
     #parser.add_argument('-run_valid_every', type=int, default=4000,
     #                    help="Run validation test at this interval (every run_valid_every batches)")
+    parser.add_argument('-disable_early_stop', action="store_true", default=False,
+                        help="A flag to disable early stoppping")
     parser.add_argument('-early_stop_tolerance', type=int, default=4,
                         help="Stop training if it doesn't improve any more for several rounds of validation")
 
