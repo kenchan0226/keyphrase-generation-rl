@@ -243,8 +243,8 @@ def train_opts(parser):
     parser.add_argument('-topk', type=int, default=10,
                         help='The only pick the top k predictions in reward.')
     parser.add_argument('-reward_type', default='0', type=int,
-                        choices=[0, 1, 2, 3, 4, 5],
-                        help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg, 5: alpha-dcg.""")
+                        choices=[0, 1, 2, 3, 4, 5, 6],
+                        help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg, 5: alpha-dcg, 6: AP""")
     parser.add_argument('-match_type', default='exact',
                         choices=['exact', 'sub'],
                         help="""Either exact matching or substring matching.""")
@@ -281,12 +281,14 @@ def train_opts(parser):
                         help="Init std of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase")
     parser.add_argument('-final_perturb_std', type=float, default=0,
                         help="Final std of gaussian perturbation vector to the hidden state of the GRU after generated each a keyphrase. Only effective when perturb_decay=1")
-    parser.add_argument('-perturb_decay', type=int, default=1, choices=[0, 1, 2],
-                        help='Specify how the std of perturbation vector decay. 0: no decay, 1: exponential decay, 2: stepwise decay')
-    parser.add_argument('-perturb_decay_factor', type=float, default=0.5,
+    parser.add_argument('-perturb_decay_mode', type=int, default=1, choices=[0, 1, 2],
+                        help='Specify how the std of perturbation vector decay. 0: no decay, 1: exponential decay, 2: iteration-wise decay')
+    parser.add_argument('-perturb_decay_factor', type=float, default=0.0001,
                         help="Specify the decay factor, only effective when perturb_decay=1 or 2")
     parser.add_argument('-perturb_baseline', action="store_true", default=False,
                         help="Whether to perturb the baseline or not")
+    parser.add_argument('-perturb_decay_along_phrases', action="store_true", default=False,
+                        help="Decay the perturbations along the predicted keyphrases, std=std/num_of_preds")
 
     # GPU
 

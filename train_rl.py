@@ -29,7 +29,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     init_perturb_std = opt.init_perturb_std
     final_perturb_std = opt.final_perturb_std
     perturb_decay_factor = opt.perturb_decay_factor
-    perturb_decay = opt.perturb_decay
+    perturb_decay_mode = opt.perturb_decay_mode
+    perturb_decay_along_phrases = opt.perturb_decay_along_phrases
 
     if opt.train_from:  # opt.train_from:
         #TODO: load the training state
@@ -58,14 +59,14 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
         # progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,total_examples=len(train_data_loader.dataset.examples))
         for batch_i, batch in enumerate(train_data_loader):
             total_batch += 1
-            if perturb_decay == 0:  # do not decay
+            if perturb_decay_mode == 0:  # do not decay
                 perturb_std = init_perturb_std
-            elif perturb_decay == 1:  # exponential decay
+            elif perturb_decay_mode == 1:  # exponential decay
                 perturb_std = final_perturb_std + (init_perturb_std - final_perturb_std) * math.exp(-1. * total_batch * perturb_decay_factor)
-            elif perturb_decay == 2:  # steps decay
+            elif perturb_decay_mode == 2:  # steps decay
                 perturb_std = init_perturb_std * math.pow(perturb_decay_factor, math.floor((1+total_batch)/4000))
 
-            batch_reward_stat, log_selected_token_dist = train_one_batch(batch, generator, optimizer_rl, opt, perturb_std)
+            batch_reward_stat, log_selected_token_dist = train_one_batch(batch, generator, optimizer_rl, opt, perturb_std, perturb_decay_along_phrases)
             report_train_reward_statistics.update(batch_reward_stat)
             total_train_reward_statistics.update(batch_reward_stat)
 
@@ -133,7 +134,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     export_train_and_valid_reward(report_train_reward, report_valid_reward, opt.checkpoint_interval, train_valid_curve_path)
 
 
-def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
+def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0, perturb_decay_along_phrases=False):
     src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = one2many_batch
     """
     src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
@@ -181,7 +182,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     start_time = time.time()
     sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask = generator.sample(
         src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
-        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std)
+        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, perturb_decay_along_phrases=perturb_decay_along_phrases)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
     sample_time = time_since(start_time)
     max_pred_seq_len = log_selected_token_dist.size(1)

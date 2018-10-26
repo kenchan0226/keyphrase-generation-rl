@@ -64,7 +64,6 @@ def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list, match_by
     :param keyphrase_str_list: stemmed list of word list
     :return:
     """
-
     num_keyphrases = len(keyphrase_str_list)
     is_present = np.zeros(num_keyphrases, dtype=bool)
     not_duplicate = np.ones(num_keyphrases, dtype=bool)
@@ -78,6 +77,7 @@ def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list, match_by
             not_duplicate[i] = True
         if not match_by_str:  # match by word
             # check if it appears in source text
+            match = False
             for src_start_idx in range(len(src_str) - len(keyphrase_word_list) + 1):
                 match = True
                 for keyphrase_i, keyphrase_w in enumerate(keyphrase_word_list):

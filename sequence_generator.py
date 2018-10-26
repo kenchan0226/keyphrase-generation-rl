@@ -299,7 +299,7 @@ class SequenceGenerator(object):
 
         return sample_list, log_selected_token_dist, unfinished_mask_all
 
-    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1, perturb_std=0):
+    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1, perturb_std=0, perturb_decay_along_phrases=False):
         # src, src_lens, src_oov, src_mask, oov_lists, word2idx
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
@@ -391,7 +391,11 @@ class SequenceGenerator(object):
                             elif perturb_decay == 1:
                                 decayed_perturb_std = perturb_std / pred_count.item()
                             """
-                            h_t = h_t + torch.normal(mean=0.0, std=torch.ones_like(h_t) * perturb_std)  # [dec_layers, batch_size, decoder_size]
+                            if perturb_decay_along_phrases:
+                                perturb_std_at_t = perturb_std / pred_count.item()
+                            else:
+                                perturb_std_at_t = perturb_std
+                            h_t = h_t + torch.normal(mean=0.0, std=torch.ones_like(h_t) * perturb_std_at_t)  # [dec_layers, batch_size, decoder_size]
                     else:  # indicator.item() == 0 or indicator.item() == 1 and pred_count.item() == num_predictions:
                         y_t.append(y_t_next[batch_idx].unsqueeze(0))
                 y_t = torch.cat(y_t, dim=0)  # [batch_size]

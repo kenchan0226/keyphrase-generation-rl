@@ -69,6 +69,11 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
                                                pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=2)
             # is_match_2d: [num_trg_str, num_pred_str]
             reward[idx] = alpha_dcg_at_k(is_match_2d, topk, method=1, alpha=0.5)
+        elif reward_type == 6:  # average precision (AP)
+            # boolean np array to indicate which prediction matches the target
+            is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
+                                            pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
+            reward[idx] = average_precision_at_k(is_match, topk, num_unique_predictions, num_unique_targets)
     return reward
 
 

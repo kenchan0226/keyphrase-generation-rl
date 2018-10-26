@@ -71,7 +71,7 @@ The followings are the options for the perturbation.
 We decay the std of the Guassian noise vector using the following methods
 - Exponential decay: <img src="https://latex.codecogs.com/gif.latex?\sigma=$\sigma_{T}&plus;(\sigma_{0}-\sigma_{T})\exp(-tk)" title="\sigma=$\sigma_{T}+(\sigma_{0}-\sigma_{T})\exp(-tk)" />,
 where <img src="https://latex.codecogs.com/gif.latex?\sigma_{0}" title="\sigma_{0}" /> is the initial std, and <img src="https://latex.codecogs.com/gif.latex?\sigma_{T}" title="\sigma_{T}" /> is the terminal std, k is the decay factor, t is the number of iterations minus 1
-- Stepwise decay: the std is multiplied by decay factor after every 4000 iterations.
+- Iteration-wise decay: the std is multiplied by decay factor after every 4000 iterations.
 
 
 ## Testing
