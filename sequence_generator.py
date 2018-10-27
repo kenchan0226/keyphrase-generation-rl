@@ -106,7 +106,7 @@ class SequenceGenerator(object):
         if self.review_attn:
             decoder_memory_bank = decoder_init_state[-1, :, :].unsqueeze(1)  # [batch, 1, decoder_size]
             decoder_memory_bank = decoder_memory_bank.repeat(beam_size, 1, 1)
-            assert decoder_memory_bank.size() == torch.Size([batch_size * beam_size, 1, self.decoder_size])
+            assert decoder_memory_bank.size() == torch.Size([batch_size * beam_size, 1, self.model.decoder_size])
         else:
             decoder_memory_bank = None
 
