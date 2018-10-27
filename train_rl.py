@@ -292,7 +292,8 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0, pe
     # take a step of gradient descent
     optimizer.step()
 
-    stat = RewardStatistics(cumulative_reward_sum, pg_loss.item(), sample_time, q_estimate_compute_time, backward_time)
+    stat = RewardStatistics(cumulative_reward_sum, pg_loss.item(), batch_size, sample_time, q_estimate_compute_time, backward_time)
+    # (final_reward=0.0, pg_loss=0.0, n_batch=0, sample_time=0, q_estimate_compute_time=0, backward_time=0)
     # reward=0.0, pg_loss=0.0, n_batch=0, sample_time=0, q_estimate_compute_time=0, backward_time=0
 
     return stat, log_selected_token_dist.detach()
