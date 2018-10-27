@@ -169,6 +169,8 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0, pe
     reward_shaping = opt.reward_shaping
     baseline = opt.baseline
     match_type = opt.match_type
+    regularization_factor = opt.regularization_factor
+
     if opt.perturb_baseline:
         baseline_perturb_std = perturb_std
     else:
@@ -254,14 +256,14 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0, pe
     # Compute the reward for each predicted keyphrase
     # if using reward shaping, each keyphrase will have its own reward, else, only the last keyphrase will get a reward
     phrase_reward = compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
-                          reward_type, topk, match_type)  # np array with size: [batch_size, num_predictions]
+                          reward_type, topk, match_type, regularization_factor)  # np array with size: [batch_size, num_predictions]
     cumulative_reward = phrase_reward[:, num_predictions - 1]
     cumulative_reward_sum = cumulative_reward.sum(0)
 
     # Subtract reward by a baseline if needed
     if opt.baseline == 'self':
         phrase_baseline = compute_phrase_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
-                          reward_type, topk, match_type)
+                          reward_type, topk, match_type, regularization_factor)
         phrase_reward = phrase_reward - phrase_baseline
 
     if reward_shaping:

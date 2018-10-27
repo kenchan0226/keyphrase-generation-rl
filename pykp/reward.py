@@ -14,11 +14,12 @@ def sample_list_to_str_2dlist(sample_list, oov_lists, idx2word, vocab_size, eos_
     return pred_str_2dlist
 
 
-def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1', topk=10, match_type="exact"):
+def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1', topk=10, match_type="exact", regularization_factor=0.5):
     assert len(trg_str_2dlist) == batch_size
     assert len(pred_str_2dlist) == batch_size
     reward = np.zeros(batch_size)
     for idx, (trg_str_list, pred_str_list) in enumerate(zip(trg_str_2dlist, pred_str_2dlist)):
+        num_predictions = len(pred_str_list)
         # perform stemming
         stemmed_trg_str_list = stem_str_list(trg_str_list)
         stemmed_pred_str_list = stem_str_list(pred_str_list)
@@ -32,6 +33,10 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
                                   is_keep]
         num_unique_targets = len(unique_stemmed_trg_str_list)
         num_unique_predictions = len(unique_stemmed_pred_str_list)
+
+        duplicate_predictions_fraction = 1 - num_unique_predictions/num_predictions
+        regularization = regularization_factor * duplicate_predictions_fraction
+
         if reward_type == 0:  # f1
             # boolean np array to indicate which prediction matches the target
             is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
@@ -74,18 +79,22 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
             is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                             pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             reward[idx] = average_precision_at_k(is_match, topk, num_unique_predictions, num_unique_targets)
+
+        # Add the penalty for duplication
+        reward[idx] -= regularization
+
     return reward
 
 
-def compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping, reward_type, topk, match_type="exact"):
+def compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping, reward_type, topk, match_type="exact", regularization_factor=0.5):
     phrase_reward = np.zeros((batch_size, num_predictions))
     if reward_shaping:
         for t in range(num_predictions):
             pred_str_2dlist_at_t = [pred_str_list[:t + 1] for pred_str_list in pred_str_2dlist]
-            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk, match_type)
+            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk, match_type, regularization_factor)
     else:
         phrase_reward[:, num_predictions - 1] = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type,
-                                                               topk, match_type)
+                                                               topk, match_type, regularization_factor)
     return phrase_reward
 
 
