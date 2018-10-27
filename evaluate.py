@@ -22,13 +22,12 @@ def evaluate_loss(data_loader, model, opt):
     model.eval()
     evaluation_loss_sum = 0.0
     total_trg_tokens = 0
-    total_batch = 0
+    n_batch = 0
     loss_compute_time_total = 0.0
     forward_time_total = 0.0
 
     with torch.no_grad():
         for batch_i, batch in enumerate(data_loader):
-            total_batch += 1
             if not opt.one2many:  # load one2one dataset
                 src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
             else:  # load one2many dataset
@@ -37,6 +36,9 @@ def evaluate_loss(data_loader, model, opt):
                             trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
 
             max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
+
+            batch_size = src.size(0)
+            n_batch += batch_size
 
             # move data to GPU if available
             src = src.to(opt.device)
@@ -67,14 +69,14 @@ def evaluate_loss(data_loader, model, opt):
             evaluation_loss_sum += loss.item()
             total_trg_tokens += sum(trg_lens)
 
-    eval_loss_stat = LossStatistics(evaluation_loss_sum, total_trg_tokens, total_batch, forward_time=forward_time_total, loss_compute_time=loss_compute_time_total)
+    eval_loss_stat = LossStatistics(evaluation_loss_sum, total_trg_tokens, n_batch, forward_time=forward_time_total, loss_compute_time=loss_compute_time_total)
     return eval_loss_stat
 
 def evaluate_reward(data_loader, generator, opt):
     """Return the avg. reward in the validation dataset"""
     generator.model.eval()
     final_reward_sum = 0.0
-    total_batch = 0
+    n_batch = 0
     sample_time_total = 0.0
     topk = opt.topk
     reward_type = opt.reward_type
@@ -90,11 +92,13 @@ def evaluate_reward(data_loader, generator, opt):
 
     with torch.no_grad():
         for batch_i, batch in enumerate(data_loader):
-            total_batch += 1
             # load one2many dataset
             src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
             num_trgs = [len(trg_str_list) for trg_str_list in
                         trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
+
+            batch_size = src.size(0)
+            n_batch += batch_size
 
             # move data to GPU if available
             src = src.to(opt.device)
@@ -103,8 +107,6 @@ def evaluate_reward(data_loader, generator, opt):
             #trg = trg.to(opt.device)
             #trg_mask = trg_mask.to(opt.device)
             #trg_oov = trg_oov.to(opt.device)
-
-            batch_size = src.size(0)
 
             start_time = time.time()
             # sample a sequence
@@ -121,7 +123,7 @@ def evaluate_reward(data_loader, generator, opt):
 
             final_reward_sum += final_reward.sum(0)
 
-    eval_reward_stat = RewardStatistics(final_reward_sum, pg_loss=0, n_batch=total_batch, sample_time=sample_time_total)
+    eval_reward_stat = RewardStatistics(final_reward_sum, pg_loss=0, n_batch=n_batch, sample_time=sample_time_total)
 
     return eval_reward_stat
 
