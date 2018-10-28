@@ -34,7 +34,10 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
         num_unique_targets = len(unique_stemmed_trg_str_list)
         num_unique_predictions = len(unique_stemmed_pred_str_list)
 
-        duplicate_predictions_fraction = 1 - num_unique_predictions/num_predictions
+        if num_predictions > 0:
+            duplicate_predictions_fraction = 1 - num_unique_predictions/num_predictions
+        else:
+            duplicate_predictions_fraction = 0.0
         regularization = regularization_factor * duplicate_predictions_fraction
 
         if reward_type == 0:  # f1
