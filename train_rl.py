@@ -106,8 +106,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                         print("Valid reward does not increase")
                         sys.stdout.flush()
                         num_stop_increasing += 1
-                        # decay the learning rate by a factor
-                        if not opt.disable_learning_rate_decay:
+                        # decay the learning rate by the factor specified by opt.learning_rate_decay
+                        if opt.learning_rate_decay_rl:
                             for i, param_group in enumerate(optimizer_rl.param_groups):
                                 old_lr = float(param_group['lr'])
                                 new_lr = old_lr * opt.learning_rate_decay
@@ -122,7 +122,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     report_train_reward.append(current_train_reward)
                     report_valid_reward.append(current_valid_reward)
 
-                    if not opt.disable_early_stop:
+                    if opt.early_stop_rl:
                         if num_stop_increasing >= opt.early_stop_tolerance:
                             logging.info('Have not increased for %d check points, early stop training' % num_stop_increasing)
                             early_stop_flag = True

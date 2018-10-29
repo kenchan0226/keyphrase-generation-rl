@@ -385,16 +385,13 @@ class SequenceGenerator(object):
                         y_t.append(y_t_init[batch_idx].unsqueeze(0))
                         # add a noisy vector to hidden state
                         if perturb_std > 0:
-                            """
-                            if perturb_decay == 0:
-                                decayed_perturb_std = perturb_std
-                            elif perturb_decay == 1:
-                                decayed_perturb_std = perturb_std / pred_count.item()
-                            """
+                            '''
                             if perturb_decay_along_phrases:
                                 perturb_std_at_t = perturb_std / pred_count.item()
                             else:
                                 perturb_std_at_t = perturb_std
+                            '''
+                            perturb_std_at_t = perturb_std / pred_count.item()
                             h_t = h_t + torch.normal(mean=0.0, std=torch.ones_like(h_t) * perturb_std_at_t)  # [dec_layers, batch_size, decoder_size]
                     else:  # indicator.item() == 0 or indicator.item() == 1 and pred_count.item() == num_predictions:
                         y_t.append(y_t_next[batch_idx].unsqueeze(0))

@@ -252,7 +252,7 @@ def train_opts(parser):
                         help="The path of pretrained model. Only effective in RL")
     parser.add_argument('-reward_shaping', action="store_true", default=False,
                         help="Use reward shaping in RL training")
-    parser.add_argument('-baseline', default="none", choices=["none", "self"],
+    parser.add_argument('-baseline', default="self", choices=["none", "self"],
                         help="The baseline in RL training. none: no baseline; self: use greedy decoding as baseline")
     parser.add_argument('-mc_rollouts', action="store_true", default=False,
                         help="Use Monte Carlo rollouts to estimate q value")
@@ -266,8 +266,8 @@ def train_opts(parser):
                         help='If true, it will not split a sample into multiple src-keyphrase pairs')
     parser.add_argument('-one2many_mode', type=int, default=0, choices=[1, 2, 3],
                         help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
-    parser.add_argument('-num_predictions', type=int, default=1,
-                        help='Control the number of predictions when one2many_mode=2.')
+    parser.add_argument('-num_predictions', type=int, default=10,
+                        help='Control the number of predictions when one2many_mode=2. If you set the one2many_mode to 1, the number of predictions should also be 1.')
 
     #parser.add_argument('-loss_scale', type=float, default=0.5,
     #                    help='A scaling factor to merge the loss of ML and RL parts: L_mixed = γ * L_rl + (1 − γ) * L_ml'
@@ -287,8 +287,8 @@ def train_opts(parser):
                         help="Specify the decay factor, only effective when perturb_decay=1 or 2")
     parser.add_argument('-perturb_baseline', action="store_true", default=False,
                         help="Whether to perturb the baseline or not")
-    parser.add_argument('-perturb_decay_along_phrases', action="store_true", default=False,
-                        help="Decay the perturbations along the predicted keyphrases, std=std/num_of_preds")
+    #parser.add_argument('-perturb_decay_along_phrases', action="store_true", default=False,
+    #                    help="Decay the perturbations along the predicted keyphrases, std=std/num_of_preds")
     parser.add_argument('-regularization_factor', type=float, default=0.5,
                         help="Factor to penalize the duplicate words")
 
@@ -309,12 +309,12 @@ def train_opts(parser):
                         help="""Starting learning rate.
                         Recommended settings: sgd = 1, adagrad = 0.1,
                         adadelta = 1, adam = 0.001""")
-    parser.add_argument('-learning_rate_rl', type=float, default=0.0001,
+    parser.add_argument('-learning_rate_rl', type=float, default=0.00005,
                         help="""Starting learning rate for Reinforcement Learning.
                         Recommended settings: sgd = 1, adagrad = 0.1,
                         adadelta = 1, adam = 0.001""")
-    parser.add_argument('-disable_learning_rate_decay', action="store_true", default=False,
-                        help="""A flag to disable learning rate decay""")
+    parser.add_argument('-learning_rate_decay_rl', action="store_true", default=False,
+                        help="""A flag to use learning rate decay in rl training""")
     parser.add_argument('-learning_rate_decay', type=float, default=0.5,
                         help="""If update_learning_rate, decay learning rate by
                         this much if (i) perplexity does not decrease on the
@@ -334,8 +334,8 @@ def train_opts(parser):
                         help='Run validation and save model parameters at this interval.')
     #parser.add_argument('-run_valid_every', type=int, default=4000,
     #                    help="Run validation test at this interval (every run_valid_every batches)")
-    parser.add_argument('-disable_early_stop', action="store_true", default=False,
-                        help="A flag to disable early stoppping")
+    parser.add_argument('-early_stop_rl', action="store_true", default=False,
+                        help="A flag to use early stopping in rl training.")
     parser.add_argument('-early_stop_tolerance', type=int, default=4,
                         help="Stop training if it doesn't improve any more for several rounds of validation")
 

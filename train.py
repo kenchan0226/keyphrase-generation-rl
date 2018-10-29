@@ -175,6 +175,9 @@ if __name__ == "__main__":
     if opt.one2many and opt.one2many_mode == 0:
         raise ValueError("If you choose one2many, you must specify the one2many mode.")
 
+    if opt.one2many_mode == 1 and opt.num_predictions > 1:
+        raise ValueError("If you set the one2many_mode to 1, the number of predictions should also be 1.")
+
     logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=True)
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
