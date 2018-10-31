@@ -299,7 +299,7 @@ class SequenceGenerator(object):
 
         return sample_list, log_selected_token_dist, unfinished_mask_all
 
-    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1, perturb_std=0, perturb_decay_along_phrases=False):
+    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1, perturb_std=0):
         # src, src_lens, src_oov, src_mask, oov_lists, word2idx
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx

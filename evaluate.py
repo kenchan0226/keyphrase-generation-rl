@@ -119,7 +119,7 @@ def evaluate_reward(data_loader, generator, opt):
             sample_time = time_since(start_time)
             sample_time_total += sample_time
 
-            final_reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type, topk, match_type) # np.array, [batch_size]
+            final_reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type, topk, match_type, regularization_factor=0.0)  # np.array, [batch_size]
 
             final_reward_sum += final_reward.sum(0)
 

@@ -30,7 +30,6 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     final_perturb_std = opt.final_perturb_std
     perturb_decay_factor = opt.perturb_decay_factor
     perturb_decay_mode = opt.perturb_decay_mode
-    perturb_decay_along_phrases = opt.perturb_decay_along_phrases
 
     if opt.train_from:  # opt.train_from:
         #TODO: load the training state
@@ -66,7 +65,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             elif perturb_decay_mode == 2:  # steps decay
                 perturb_std = init_perturb_std * math.pow(perturb_decay_factor, math.floor((1+total_batch)/4000))
 
-            batch_reward_stat, log_selected_token_dist = train_one_batch(batch, generator, optimizer_rl, opt, perturb_std, perturb_decay_along_phrases)
+            batch_reward_stat, log_selected_token_dist = train_one_batch(batch, generator, optimizer_rl, opt, perturb_std)
             report_train_reward_statistics.update(batch_reward_stat)
             total_train_reward_statistics.update(batch_reward_stat)
 
@@ -134,7 +133,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     export_train_and_valid_reward(report_train_reward, report_valid_reward, opt.checkpoint_interval, train_valid_curve_path)
 
 
-def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0, perturb_decay_along_phrases=False):
+def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = one2many_batch
     """
     src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
@@ -184,13 +183,13 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0, pe
     start_time = time.time()
     sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask = generator.sample(
         src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
-        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, perturb_decay_along_phrases=perturb_decay_along_phrases)
+        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
     sample_time = time_since(start_time)
     max_pred_seq_len = log_selected_token_dist.size(1)
 
     # if use self critical as baseline, greedily decode a sequence from the model
-    if opt.baseline == 'self':
+    if baseline == 'self':
         generator.model.eval()
         with torch.no_grad():
             start_time = time.time()
@@ -204,54 +203,6 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0, pe
                                                           eos_idx,
                                                           delimiter_word)
         generator.model.train()
-    '''
-    if opt.pg_method == 0:
-        # reward: an np array with size [batch_size]
-        reward = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type, topk)
-        generator.model.eval()
-        with torch.no_grad():
-            greedy_sample_list, _, _, greedy_eos_idx_mask = generator.sample(src, src_lens, src_oov, src_mask,
-                                                                             oov_lists, opt.max_length,
-                                                                             greedy=True, one2many=one2many, one2many_mode=one2many_mode, num_predictions=num_predictions)
-            greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
-                                                    delimiter_word)
-        generator.model.train()
-        baseline = compute_reward(trg_str_2dlist, greedy_str_2dlist, batch_size, reward_type, topk)
-        baselined_reward = reward - baseline
-        baselined_reward = np.repeat(baselined_reward[:, np.newaxis], max_pred_seq_len, axis=1)  # [batch_size, prediction_seq_len]
-        assert baselined_reward.shape == (batch_size, max_pred_seq_len)
-        q_value_sample = torch.from_numpy(baselined_reward).type(torch.FloatTensor).to(src.device)
-        q_value_sample.requires_grad_(True)
-        final_reward = reward
-
-    elif opt.pg_method == 1:  # stepwise reward
-        #reward = np.zeros((batch_size, max_pred_seq_len))
-        phrase_reward = np.zeros((batch_size, num_predictions + 1))  # store the reward received for each prediction, the last column is the reward for padded words, which must be 0
-        for t in range(num_predictions):
-            pred_str_2dlist_at_t = [pred_str_list[:t+1] for pred_str_list in pred_str_2dlist]
-            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk)
-        with torch.no_grad():
-            greedy_sample_list, _, _, greedy_eos_idx_mask = generator.sample(src, src_lens, src_oov, src_mask,
-                                                                              oov_lists, opt.max_length,
-                                                                              greedy=True, one2many=one2many,
-                                                                              one2many_mode=one2many_mode,
-                                                                              num_predictions=num_predictions)
-            greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
-                                                          eos_idx,
-                                                          delimiter_word)
-        generator.model.train()
-        phrase_baseline = np.zeros((batch_size, num_predictions + 1))
-        for t in range(num_predictions):
-            greedy_str_2dlist_at_t = [greedy_str_list[:t + 1] for greedy_str_list in greedy_str_2dlist]
-            phrase_baseline[:, t] = compute_reward(trg_str_2dlist, greedy_str_2dlist_at_t, batch_size, reward_type, topk)
-        baselined_phrase_reward = phrase_reward - phrase_baseline
-        baselined_phrase_reward = torch.from_numpy(baselined_phrase_reward).type(torch.FloatTensor).to(src.device).requires_grad_(False)
-        baselined_reward = torch.gather(baselined_phrase_reward, dim=1, index=pred_phrase_idx_mask)
-        q_value_sample = baselined_reward
-
-        q_value_sample.requires_grad_(True)
-        final_reward = phrase_reward[:, num_predictions - 1]
-    '''
 
     # Compute the reward for each predicted keyphrase
     # if using reward shaping, each keyphrase will have its own reward, else, only the last keyphrase will get a reward
