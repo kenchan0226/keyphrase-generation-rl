@@ -113,7 +113,7 @@ def evaluate_reward(data_loader, generator, opt):
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
             sample_list, log_selected_token_dist, output_mask, pred_idx_mask = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
-                one2many_mode=one2many_mode, num_predictions=num_predictions)
+                one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=0)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
             #print(pred_str_2dlist)
             sample_time = time_since(start_time)
