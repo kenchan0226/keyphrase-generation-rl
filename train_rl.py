@@ -168,7 +168,13 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     reward_shaping = opt.reward_shaping
     baseline = opt.baseline
     match_type = opt.match_type
+    regularization_type = opt.regularization_type
     regularization_factor = opt.regularization_factor
+
+    if regularization_type == 2:
+        entropy_regularize = True
+    else:
+        entropy_regularize = False
 
     if opt.perturb_baseline:
         baseline_perturb_std = perturb_std
@@ -181,9 +187,9 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
     # log_selected_token_dist: size: [batch, output_seq_len]
     start_time = time.time()
-    sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask = generator.sample(
+    sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask, entropy = generator.sample(
         src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
-        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std)
+        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, entropy_regularize=entropy_regularize)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
     sample_time = time_since(start_time)
     max_pred_seq_len = log_selected_token_dist.size(1)
@@ -193,7 +199,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
         generator.model.eval()
         with torch.no_grad():
             start_time = time.time()
-            greedy_sample_list, _, _, greedy_eos_idx_mask = generator.sample(src, src_lens, src_oov, src_mask,
+            greedy_sample_list, _, _, greedy_eos_idx_mask, _ = generator.sample(src, src_lens, src_oov, src_mask,
                                                                              oov_lists, opt.max_length,
                                                                              greedy=True, one2many=one2many,
                                                                              one2many_mode=one2many_mode,
@@ -206,15 +212,17 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
 
     # Compute the reward for each predicted keyphrase
     # if using reward shaping, each keyphrase will have its own reward, else, only the last keyphrase will get a reward
+    # In addition, we adds a regularization terms to the reward
     phrase_reward = compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
-                          reward_type, topk, match_type, regularization_factor)  # np array with size: [batch_size, num_predictions]
+                          reward_type, topk, match_type, regularization_factor, regularization_type, entropy)  # np array with size: [batch_size, num_predictions]
     cumulative_reward = phrase_reward[:, num_predictions - 1]
     cumulative_reward_sum = cumulative_reward.sum(0)
 
     # Subtract reward by a baseline if needed
     if opt.baseline == 'self':
+        # do not add regularization in the baseline
         phrase_baseline = compute_phrase_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
-                          reward_type, topk, match_type, regularization_factor)
+                          reward_type, topk, match_type)
         phrase_reward = phrase_reward - phrase_baseline
 
     if reward_shaping:
