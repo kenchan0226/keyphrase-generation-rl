@@ -299,7 +299,7 @@ class SequenceGenerator(object):
 
         return sample_list, log_selected_token_dist, unfinished_mask_all
 
-    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1, perturb_std=0):
+    def sample(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1, perturb_std=0, entropy_regularize=False):
         # src, src_lens, src_oov, src_mask, oov_lists, word2idx
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
@@ -318,6 +318,8 @@ class SequenceGenerator(object):
         memory_bank, encoder_final_state = self.model.encoder(src, src_lens)
         assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.model.num_directions * self.model.encoder_size])
         assert encoder_final_state.size() == torch.Size([batch_size, self.model.num_directions * self.model.encoder_size])
+        if greedy and entropy_regularize:
+            raise ValueError("When using greedy, should not use entropy regularization.")
 
         # Init decoder state
         h_t_init = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
@@ -345,6 +347,11 @@ class SequenceGenerator(object):
         #pred_idx_all = []  # store the idx of prediction (e.g., the i-th prediction) for each token
         re_init_indicators = y_t_init == self.eos_idx
         eos_idx_mask_all = [re_init_indicators.unsqueeze(1)]
+
+        if entropy_regularize:
+            entropy = torch.zeros(batch_size)
+        else:
+            entropy = None
 
         for t in range(max_sample_length):
             if t > 0:
@@ -413,6 +420,10 @@ class SequenceGenerator(object):
             decoder_dist, h_t_next, context, attn_dist, _, coverage = \
                 self.model.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank)
 
+            if entropy_regularize:
+                log_decoder_dist = torch.log(decoder_dist + EPS)  # [batch, vocab_size]
+                entropy -= torch.bmm(decoder_dist.unsqueeze(1), log_decoder_dist.unsqueeze(2)).view(batch_size)  # [batch]
+
             if greedy:  # greedy decoding, only use in self-critical
                 selected_token_dist, prediction = torch.max(decoder_dist, 1)
                 selected_token_dist = selected_token_dist.unsqueeze(1)  # [batch, 1]
@@ -421,7 +432,7 @@ class SequenceGenerator(object):
             else:  # sampling according to the probability distribution from the decoder
                 prediction = torch.multinomial(decoder_dist, 1)  # [batch, 1]
                 # select the probability of sampled tokens, and then take log, size: [batch, 1], append to a list
-                log_selected_token_dist.append(torch.log(decoder_dist + EPS).gather(1, prediction))
+                log_selected_token_dist.append(log_decoder_dist.gather(1, prediction))
 
             for batch_idx, sample in enumerate(sample_list):
                 if not sample['done']:
@@ -461,7 +472,13 @@ class SequenceGenerator(object):
         assert eos_idx_mask_all.size() == log_selected_token_dist.size()
 
         #return sample_list, log_selected_token_dist, unfinished_mask_all, pred_idx_all
-        return sample_list, log_selected_token_dist, unfinished_mask_all, eos_idx_mask_all
+        """
+        if entropy_regularize:
+            return sample_list, log_selected_token_dist, unfinished_mask_all, eos_idx_mask_all, entropy
+        else:
+            return sample_list, log_selected_token_dist, unfinished_mask_all, eos_idx_mask_all
+        """
+        return sample_list, log_selected_token_dist, unfinished_mask_all, eos_idx_mask_all, entropy
 
     def sample_reset(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1):
         # src, src_lens, src_oov, src_mask, oov_lists, word2idx

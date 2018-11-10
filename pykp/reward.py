@@ -14,10 +14,14 @@ def sample_list_to_str_2dlist(sample_list, oov_lists, idx2word, vocab_size, eos_
     return pred_str_2dlist
 
 
-def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1', topk=10, match_type="exact", regularization_factor=0.5):
+def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1', topk=10, match_type="exact", regularization_factor=0.0, regularization_type=0, entropy=None):
     assert len(trg_str_2dlist) == batch_size
     assert len(pred_str_2dlist) == batch_size
     reward = np.zeros(batch_size)
+
+    if regularization_type == 1 and entropy is None:
+        raise ValueError('Entropy should not be none when regularization type is 1')
+
     for idx, (trg_str_list, pred_str_list) in enumerate(zip(trg_str_2dlist, pred_str_2dlist)):
         num_predictions = len(pred_str_list)
         # perform stemming
@@ -34,11 +38,21 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
         num_unique_targets = len(unique_stemmed_trg_str_list)
         num_unique_predictions = len(unique_stemmed_pred_str_list)
 
-        if num_predictions > 0:
-            duplicate_predictions_fraction = 1 - num_unique_predictions/num_predictions
+
+        if regularization_type == 1:
+            if num_predictions > 0:
+                duplicate_predictions_fraction = 1 - num_unique_predictions/num_predictions
+            else:
+                duplicate_predictions_fraction = 1.0
+            regularization = -duplicate_predictions_fraction
+        elif regularization_type == 2:
+            if entropy is None:
+                raise ValueError("Entropy cannot be none when regularization type = 2")
+            regularization = entropy
         else:
-            duplicate_predictions_fraction = 1.0
-        regularization = regularization_factor * duplicate_predictions_fraction
+            regularization = 0.0
+
+        regularization = regularization_factor * regularization
 
         if reward_type == 0:  # f1
             # boolean np array to indicate which prediction matches the target
@@ -84,20 +98,20 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
             reward[idx] = average_precision_at_k(is_match, topk, num_unique_predictions, num_unique_targets)
 
         # Add the penalty for duplication
-        reward[idx] -= regularization
+        reward[idx] += regularization
 
     return reward
 
 
-def compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping, reward_type, topk, match_type="exact", regularization_factor=0.5):
+def compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping, reward_type, topk, match_type="exact", regularization_factor=0.0, regularization_type=0, entropy=None):
     phrase_reward = np.zeros((batch_size, num_predictions))
     if reward_shaping:
         for t in range(num_predictions):
             pred_str_2dlist_at_t = [pred_str_list[:t + 1] for pred_str_list in pred_str_2dlist]
-            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk, match_type, regularization_factor)
+            phrase_reward[:, t] = compute_reward(trg_str_2dlist, pred_str_2dlist_at_t, batch_size, reward_type, topk, match_type, regularization_factor, regularization_type, entropy)
     else:
         phrase_reward[:, num_predictions - 1] = compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type,
-                                                               topk, match_type, regularization_factor)
+                                                               topk, match_type, regularization_factor, regularization_type, entropy)
     return phrase_reward
 
 

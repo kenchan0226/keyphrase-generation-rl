@@ -289,8 +289,10 @@ def train_opts(parser):
                         help="Whether to perturb the baseline or not")
     #parser.add_argument('-perturb_decay_along_phrases', action="store_true", default=False,
     #                    help="Decay the perturbations along the predicted keyphrases, std=std/num_of_preds")
-    parser.add_argument('-regularization_factor', type=float, default=0.5,
-                        help="Factor to penalize the duplicate words")
+    parser.add_argument('-regularization_type', type=int, default=0, choices=[0, 1, 2],
+                        help='0: no regularization, 1: -ve percentage of repetitions, 2: entropy')
+    parser.add_argument('-regularization_factor', type=float, default=0.0,
+                        help="Factor of regularization")
 
     # GPU
 

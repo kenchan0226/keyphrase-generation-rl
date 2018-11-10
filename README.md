@@ -73,6 +73,12 @@ We decay the std of the Guassian noise vector using the following methods
 where <img src="https://latex.codecogs.com/gif.latex?\sigma_{0}" title="\sigma_{0}" /> is the initial std, and <img src="https://latex.codecogs.com/gif.latex?\sigma_{T}" title="\sigma_{T}" /> is the terminal std, k is the decay factor, t is the number of iterations minus 1
 - Iteration-wise decay: the std is multiplied by decay factor after every 4000 iterations.
 
+The follwoings are the options for regularization.
+```
+-regularization_type [type], 0: no regulaization, 1: -ve percentage of repetitions, 2: entropy of policy
+-regularization_factor [regularization_factor]
+```
+We will not add the regularization to the baseline.
 
 ## Testing
 Examples of testing commands:
