@@ -19,8 +19,10 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
     assert len(pred_str_2dlist) == batch_size
     reward = np.zeros(batch_size)
 
-    if regularization_type == 1 and entropy is None:
-        raise ValueError('Entropy should not be none when regularization type is 1')
+    if regularization_type == 2:
+        if entropy is None:
+            raise ValueError('Entropy should not be none when regularization type is 1')
+        assert reward.shape[0] == entropy.shape[0]
 
     for idx, (trg_str_list, pred_str_list) in enumerate(zip(trg_str_2dlist, pred_str_2dlist)):
         num_predictions = len(pred_str_list)
@@ -46,9 +48,7 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
                 duplicate_predictions_fraction = 1.0
             regularization = -duplicate_predictions_fraction
         elif regularization_type == 2:
-            if entropy is None:
-                raise ValueError("Entropy cannot be none when regularization type = 2")
-            regularization = entropy
+            regularization = entropy[idx]
         else:
             regularization = 0.0
 

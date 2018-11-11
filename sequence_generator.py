@@ -349,7 +349,7 @@ class SequenceGenerator(object):
         eos_idx_mask_all = [re_init_indicators.unsqueeze(1)]
 
         if entropy_regularize:
-            entropy = torch.zeros(batch_size)
+            entropy = torch.zeros(batch_size).to(src.device)
         else:
             entropy = None
 
@@ -420,8 +420,9 @@ class SequenceGenerator(object):
             decoder_dist, h_t_next, context, attn_dist, _, coverage = \
                 self.model.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank)
 
+            log_decoder_dist = torch.log(decoder_dist + EPS)  # [batch, vocab_size]
+
             if entropy_regularize:
-                log_decoder_dist = torch.log(decoder_dist + EPS)  # [batch, vocab_size]
                 entropy -= torch.bmm(decoder_dist.unsqueeze(1), log_decoder_dist.unsqueeze(2)).view(batch_size)  # [batch]
 
             if greedy:  # greedy decoding, only use in self-critical

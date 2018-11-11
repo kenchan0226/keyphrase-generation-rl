@@ -194,6 +194,11 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     sample_time = time_since(start_time)
     max_pred_seq_len = log_selected_token_dist.size(1)
 
+    if entropy_regularize:
+        entropy_array = entropy.data.cpu().numpy()
+    else:
+        entropy_array = None
+
     # if use self critical as baseline, greedily decode a sequence from the model
     if baseline == 'self':
         generator.model.eval()
@@ -213,8 +218,9 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     # Compute the reward for each predicted keyphrase
     # if using reward shaping, each keyphrase will have its own reward, else, only the last keyphrase will get a reward
     # In addition, we adds a regularization terms to the reward
+
     phrase_reward = compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
-                          reward_type, topk, match_type, regularization_factor, regularization_type, entropy)  # np array with size: [batch_size, num_predictions]
+                          reward_type, topk, match_type, regularization_factor, regularization_type, entropy_array)  # np array with size: [batch_size, num_predictions]
     cumulative_reward = phrase_reward[:, num_predictions - 1]
     cumulative_reward_sum = cumulative_reward.sum(0)
 
