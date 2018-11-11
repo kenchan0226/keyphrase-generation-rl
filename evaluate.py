@@ -111,7 +111,7 @@ def evaluate_reward(data_loader, generator, opt):
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
-            sample_list, log_selected_token_dist, output_mask, pred_idx_mask = generator.sample(
+            sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _ = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=0)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
@@ -170,7 +170,7 @@ def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
-            sample_list, log_selected_token_dist, output_mask, pred_idx_mask = generator.sample(
+            sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _ = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=opt.greedy, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
