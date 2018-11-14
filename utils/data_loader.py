@@ -4,20 +4,26 @@ from pykp.io import KeyphraseDataset
 from torch.utils.data import DataLoader
 
 
-def load_data_and_vocab(opt, load_train=True):
+def load_vocab(opt):
     # load vocab
     logging.info("Loading vocab from disk: %s" % (opt.vocab))
     if not opt.custom_vocab_filename_suffix:
         word2idx, idx2word, vocab = torch.load(opt.vocab + '/vocab.pt', 'wb')
     else:
         word2idx, idx2word, vocab = torch.load(opt.vocab + '/vocab.%s.pt' % opt.vocab_filename_suffix, 'wb')
-
     # assign vocab to opt
     opt.word2idx = word2idx
     opt.idx2word = idx2word
     opt.vocab = vocab
     logging.info('#(vocab)=%d' % len(vocab))
     logging.info('#(vocab used)=%d' % opt.vocab_size)
+
+    return word2idx, idx2word, vocab
+
+
+def load_data_and_vocab(opt, load_train=True):
+    # load vocab
+    word2idx, idx2word, vocab = load_vocab(opt)
 
     # constructor data loader
     logging.info("Loading train and validate data from '%s'" % opt.data)

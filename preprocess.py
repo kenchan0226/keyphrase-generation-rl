@@ -16,8 +16,15 @@ def read_tokenized_src_file(path, concat_title=True):
     with open(path) as f:
         for line in f:
             if concat_title:
-                [title, context] = line.strip().split('<eos>')
-                word_list = title.strip().split(' ') + context.strip().split(' ')
+                title_and_context = line.strip().split('<eos>')
+                if len(title_and_context) == 1:  # it only has context without title
+                    [context] = title_and_context
+                    word_list = context.strip().split(' ')
+                elif len(title_and_context) == 2:
+                    [title, context] = title_and_context
+                    word_list = title.strip().split(' ') + context.strip().split(' ')
+                else:
+                    raise ValueError("The source text contains more than one title")
                 data.append(word_list)
             else:
                 raise ValueError('Not yet implement the function of separating title and context')
@@ -44,8 +51,17 @@ def read_src_and_trg_files(src_file, trg_file, is_train, concat_title=True):
     for src_line, trg_line in zip(open(src_file, 'r'), open(trg_file, 'r')):
         # process source line
         if concat_title:
-            [title, context] = src_line.strip().split('<eos>')
-            src_word_list = title.strip().split(' ') + context.strip().split(' ')
+            title_and_context = src_line.strip().split('<eos>')
+            if len(title_and_context) == 1:  # it only has context without title
+                [context] = title_and_context
+                src_word_list = context.strip().split(' ')
+            elif len(title_and_context) == 2:
+                [title, context] = title_and_context
+                src_word_list = title.strip().split(' ') + context.strip().split(' ')
+            else:
+                raise ValueError("The source text contains more than one title")
+            #[title, context] = src_line.strip().split('<eos>')
+            #src_word_list = title.strip().split(' ') + context.strip().split(' ')
         else:
             raise ValueError('Not yet implement the function of separating title and context')
         # process target line

@@ -129,7 +129,10 @@ def evaluate_reward(data_loader, generator, opt):
 
 def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
     # file for storing the predicted keyphrases
-    pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
+    if opt.pred_file_prefix == "":
+        pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
+    else:
+        pred_output_file = open(os.path.join(opt.pred_path, "%s_predictions.txt" % opt.pred_file_prefix), "w")
     # debug
     interval = 1000
     generator.model.eval()
@@ -290,7 +293,10 @@ def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_
 def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<sep>'):
     #score_dict_all = defaultdict(list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
     # file for storing the predicted keyphrases
-    pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
+    if opt.pred_file_prefix == "":
+        pred_output_file = open(os.path.join(opt.pred_path, "predictions.txt"), "w")
+    else:
+        pred_output_file = open(os.path.join(opt.pred_path, "%s_predictions.txt" % opt.pred_file_prefix), "w")
     # debug
     interval = 1000
 

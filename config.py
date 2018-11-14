@@ -428,7 +428,8 @@ def predict_opts(parser):
 
     parser.add_argument('-include_attn_dist', action="store_true",
                         help="Whether to return the attention distribution, for the visualization of the attention weights, haven't implemented")
-
+    parser.add_argument('-pred_file_prefix', type=str, default="",
+                        help="Prefix of prediction file.")
     parser.add_argument('-pred_path', type=str, default="pred/%s.%s",
                         help="Path of outputs of predictions.")
     parser.add_argument('-exp', type=str, default="kp20k",
@@ -472,3 +473,69 @@ def post_predict_opts(parser):
                         help='Print out the metric at each step or not')
     parser.add_argument('-match_by_str', action="store_true", default=False,
                         help='If false, match the words at word level when checking present keyphrase. Else, match the words at string level.')
+
+
+def interactive_predict_opts(parser):
+    parser.add_argument('-model', required=True,
+                       help='Path to model .pt file')
+    parser.add_argument('-attn_debug', action="store_true", help="Whether to print attn for each word")
+    parser.add_argument('-src_file', required=True,
+                        help="""Path to source file""")
+    parser.add_argument('-trg_file', required=True,
+                        help="""Path to target file""")
+    parser.add_argument('-vocab', required=True,
+                        help="""Path prefix to the "vocab.pt"
+                            file path from preprocess.py""")
+    parser.add_argument('-custom_vocab_filename_suffix', action="store_true",
+                        help='')
+    parser.add_argument('-vocab_filename_suffix', default='',
+                        help='')
+    parser.add_argument('-beam_size', type=int, default=50,
+                       help='Beam size')
+    parser.add_argument('-n_best', type=int, default=1,
+                        help='Pick the top n_best sequences from beam_search, if n_best < 0, then n_best=beam_size')
+    parser.add_argument('-max_length', type=int, default=60,
+                       help='Maximum prediction length.')
+    parser.add_argument('-length_penalty_factor', type=float, default=0.,
+                       help="""Google NMT length penalty parameter
+                            (higher = longer generation)""")
+    parser.add_argument('-coverage_penalty_factor', type=float, default=-0.,
+                       help="""Coverage penalty parameter""")
+    parser.add_argument('-length_penalty', default='none', choices=['none', 'wu', 'avg'],
+    help="""Length Penalty to use.""")
+    parser.add_argument('-coverage_penalty', default='none', choices=['none', 'wu', 'summary'],
+                       help="""Coverage Penalty to use.""")
+    parser.add_argument('-gpuid', default=0, type=int,
+                        help="Use CUDA on the selected device.")
+    parser.add_argument('-seed', type=int, default=9527,
+                        help="""Random seed used for the experiments
+                            reproducibility.""")
+    parser.add_argument('-batch_size', type=int, default=8,
+                        help='Maximum batch size')
+    parser.add_argument('-batch_workers', type=int, default=1,
+                        help='Number of workers for generating batches')
+
+    timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
+
+    parser.add_argument('-timemark', type=str, default=timemark,
+                        help="The current time stamp.")
+
+    parser.add_argument('-include_attn_dist', action="store_true",
+                        help="Whether to return the attention distribution, for the visualization of the attention weights, haven't implemented")
+
+    parser.add_argument('-pred_path', type=str, required=True,
+                        help="Path of outputs of predictions.")
+    parser.add_argument('-pred_file_prefix', type=str, default="",
+                        help="Prefix of prediction file.")
+    #parser.add_argument('-exp', type=str, default="kp20k",
+    #                    help="Name of the experiment for logging.")
+    #parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
+    #                    help="Path of experiment log/plot.")
+    parser.add_argument('-one2many', action="store_true", default=False,
+                        help='If true, it will not split a sample into multiple src-keyphrase pairs')
+    parser.add_argument('-greedy', action="store_true", default=False,
+                        help='Use greedy decoding instead of sampling in one2many mode')
+    parser.add_argument('-one2many_mode', type=int, choices=[0, 1, 2, 3], default=0,
+                        help='Only effective when one2many=True. 0 is a dummy option which takes no effect. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
+    parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
+                        help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
