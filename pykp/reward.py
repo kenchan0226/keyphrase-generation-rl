@@ -21,84 +21,113 @@ def compute_reward(trg_str_2dlist, pred_str_2dlist, batch_size, reward_type='f1'
 
     if regularization_type == 2:
         if entropy is None:
-            raise ValueError('Entropy should not be none when regularization type is 1')
+            raise ValueError('Entropy should not be none when regularization type is 2')
         assert reward.shape[0] == entropy.shape[0]
 
     for idx, (trg_str_list, pred_str_list) in enumerate(zip(trg_str_2dlist, pred_str_2dlist)):
+        # trg_str_list, list of word list, len = number of target keyphrases, trg_str_list[i] = word list of i-th target keyphrase
+        # pred_str_list, list of word list, len = number of predicted keyphrases
+
         num_predictions = len(pred_str_list)
         # perform stemming
         stemmed_trg_str_list = stem_str_list(trg_str_list)
         stemmed_pred_str_list = stem_str_list(pred_str_list)
 
-        trg_str_filter = check_duplicate_keyphrases(stemmed_trg_str_list)  # a boolean nparray, true if not duplicated
-        pred_str_filter = check_duplicate_keyphrases(stemmed_pred_str_list)
+        trg_str_unique_filter = check_duplicate_keyphrases(stemmed_trg_str_list)  # a boolean nparray, true if not duplicated
+        pred_str_unique_filter = check_duplicate_keyphrases(stemmed_pred_str_list)
 
-        unique_stemmed_trg_str_list = [word_list for word_list, is_keep in zip(stemmed_trg_str_list, trg_str_filter) if
+        unique_stemmed_trg_str_list = [word_list for word_list, is_keep in zip(stemmed_trg_str_list, trg_str_unique_filter) if
                                  is_keep]
-        unique_stemmed_pred_str_list = [word_list for word_list, is_keep in zip(stemmed_pred_str_list, pred_str_filter) if
+        unique_stemmed_pred_str_list = [word_list for word_list, is_keep in zip(stemmed_pred_str_list, pred_str_unique_filter) if
                                   is_keep]
         num_unique_targets = len(unique_stemmed_trg_str_list)
         num_unique_predictions = len(unique_stemmed_pred_str_list)
 
+        # replace all duplicate keyphrases by a <PAD> token, i.e., treat it as a incorrect keyphrase
+        penalized_stemmed_pred_str_list = []
+        for pred_word_list, is_unique in zip(stemmed_pred_str_list, pred_str_unique_filter):
+            if is_unique:
+                penalized_stemmed_pred_str_list.append(pred_word_list)
+            else:
+                penalized_stemmed_pred_str_list.append(['<pad>'])
+        # ============
 
         if regularization_type == 1:
+            """
             if num_predictions > 0:
                 duplicate_predictions_fraction = 1 - num_unique_predictions/num_predictions
             else:
                 duplicate_predictions_fraction = 1.0
             regularization = -duplicate_predictions_fraction
+            """
+            if num_predictions > 0:
+                unique_prediction_fraction = num_unique_predictions / num_predictions
+            else:
+                unique_prediction_fraction = 0
+            regularization = unique_prediction_fraction
         elif regularization_type == 2:
             regularization = entropy[idx]
         else:
             regularization = 0.0
 
-        regularization = regularization_factor * regularization
+        #regularization = regularization_factor * regularization
 
         if reward_type == 0:  # f1
             # boolean np array to indicate which prediction matches the target
             is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                             pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             precision_k, recall_k, f1_k, _, _ = compute_classification_metrics_at_k(is_match, num_unique_predictions, num_unique_targets, topk=topk)
-            reward[idx] = f1_k
+            tmp_reward = f1_k
         elif reward_type == 1:  # recall
             # boolean np array to indicate which prediction matches the target
             is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                             pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             precision_k, recall_k, f1_k, _, _ = compute_classification_metrics_at_k(is_match, num_unique_predictions,
                                                                                     num_unique_targets, topk=topk)
-            reward[idx] = recall_k
+            tmp_reward = recall_k
         elif reward_type == 2:  # ndcg
             # boolean np array to indicate which prediction matches the target
             is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                             pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             ndcg_k = ndcg_at_k(is_match, topk, method=1)
-            reward[idx] = ndcg_k
+            tmp_reward = ndcg_k
         elif reward_type == 3:  # accuracy
             # boolean np array to indicate which prediction matches the target
             is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                             pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
             acc = sum(is_match)/is_match.shape[0]
-            reward[idx] = acc
+            tmp_reward = acc
         elif reward_type == 4:  # alpha-ndcg
             # boolean np array to indicate which prediction matches the target
             is_match_2d = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                             pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=2)
             # is_match_2d: [num_trg_str, num_pred_str]
-            reward[idx] = alpha_ndcg_at_k(is_match_2d, topk, method=1, alpha=0.5)
+            tmp_reward = alpha_ndcg_at_k(is_match_2d, topk, method=1, alpha=0.5)
         elif reward_type == 5:  # alpha-dcg
             # boolean np array to indicate which prediction matches the target
             is_match_2d = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                                pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=2)
             # is_match_2d: [num_trg_str, num_pred_str]
-            reward[idx] = alpha_dcg_at_k(is_match_2d, topk, method=1, alpha=0.5)
+            tmp_reward = alpha_dcg_at_k(is_match_2d, topk, method=1, alpha=0.5)
         elif reward_type == 6:  # average precision (AP)
             # boolean np array to indicate which prediction matches the target
             is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
                                             pred_str_list=unique_stemmed_pred_str_list, type=match_type, dimension=1)
-            reward[idx] = average_precision_at_k(is_match, topk, num_unique_predictions, num_unique_targets)
+            tmp_reward = average_precision_at_k(is_match, topk, num_unique_predictions, num_unique_targets)
+        elif reward_type == 7:  # f1 while treating all duplication as incorrect guess
+            # boolean np array to indicate which prediction matches the target
+            is_match = compute_match_result(trg_str_list=unique_stemmed_trg_str_list,
+                                            pred_str_list=penalized_stemmed_pred_str_list, type=match_type, dimension=1)
+            precision_k, recall_k, f1_k, _, _ = compute_classification_metrics_at_k(is_match, num_predictions,
+                                                                                    num_unique_targets, topk=topk)
+            tmp_reward = f1_k
 
-        # Add the penalty for duplication
-        reward[idx] += regularization
+        # Add the regularization term to the reward only if regularization type != 0
+        if regularization_type == 0 or regularization_factor == 0:
+            reward[idx] = tmp_reward
+        else:
+            reward[idx] = (1 - regularization_factor) * tmp_reward + regularization_factor * regularization
+            #reward[idx] += regularization
 
     return reward
 

@@ -32,8 +32,8 @@ def process_opt(opt):
     if opt.one2many and opt.one2many_mode == 0:
         raise ValueError("If you choose one2many, you must specify the one2many mode.")
 
-    if opt.greedy and not opt.one2many:
-        raise ValueError("Greedy sampling can only be used in one2many mode.")
+    #if opt.greedy and not opt.one2many:
+    #    raise ValueError("Greedy sampling can only be used in one2many mode.")
     return opt
 
 

@@ -226,9 +226,9 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
 
     # Subtract reward by a baseline if needed
     if opt.baseline == 'self':
-        # do not add regularization in the baseline
+        # use the reward of greedy decoding as baseline
         phrase_baseline = compute_phrase_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
-                          reward_type, topk, match_type)
+                          reward_type, topk, match_type, regularization_factor, regularization_type, entropy_array)
         phrase_reward = phrase_reward - phrase_baseline
 
     if reward_shaping:

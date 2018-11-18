@@ -169,12 +169,12 @@ def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
             else:
                 num_predictions = 1
             '''
-            num_predictions = opt.n_best
+            num_predictions = opt.max_eos_per_output_seq
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
             sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _ = generator.sample(
-                src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=opt.greedy, one2many=one2many,
+                src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
                                                         delimiter_word)
@@ -319,7 +319,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
             src_mask = src_mask.to(opt.device)
             src_oov = src_oov.to(opt.device)
 
-            beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.word2idx)
+            beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.max_eos_per_output_seq)
             pred_list = preprocess_beam_search_result(beam_search_result, opt.idx2word, opt.vocab_size, oov_lists, opt.word2idx[pykp.io.EOS_WORD])
             # list of {"sentences": [], "scores": [], "attention": []}
 
@@ -338,13 +338,12 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
                 pred_attn_list = pred['attention']
 
                 if opt.one2many:
-                    if opt.one2many_mode == 1:  # split the concated keyphrases into a list of keyphrases
-                        all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
-                        for word_list in pred_str_list:
-                            all_keyphrase_list += split_concated_keyphrases(word_list, delimiter_word)
-                            #not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
-                        #pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
-                        pred_str_list = all_keyphrase_list
+                    all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
+                    for word_list in pred_str_list:
+                        all_keyphrase_list += split_concated_keyphrases(word_list, delimiter_word)
+                        #not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
+                    #pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
+                    pred_str_list = all_keyphrase_list
 
                 # output the predicted keyphrases to a file
                 pred_print_out = ''

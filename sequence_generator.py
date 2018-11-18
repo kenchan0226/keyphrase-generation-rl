@@ -71,7 +71,7 @@ class SequenceGenerator(object):
         else:
             self.n_best = n_best
 
-    def beam_search(self, src, src_lens, src_oov, src_mask, oov_lists, word2idx):
+    def beam_search(self, src, src_lens, src_oov, src_mask, oov_lists, max_eos_per_output_seq=1):
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
         :param src_lens: a list containing the length of src sequences for each batch, with len=batch
@@ -95,7 +95,7 @@ class SequenceGenerator(object):
         decoder_init_state = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
 
         # init initial_input to be BOS token
-        decoder_init_input = src.new_ones((batch_size * beam_size, 1)) * self.bos_idx  # [batch_size*beam_size, 1]
+        #decoder_init_input = src.new_ones((batch_size * beam_size, 1)) * self.bos_idx  # [batch_size*beam_size, 1]
 
         if self.coverage_attn:  # init coverage
             #coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, src_len]
@@ -116,7 +116,7 @@ class SequenceGenerator(object):
         src_oov = src_oov.repeat(self.beam_size, 1)  # [batch * beam_size, src_seq_len]
         decoder_state = decoder_init_state.repeat(1, self.beam_size, 1)  # [dec_layers, batch_size * beam_size, decoder_size]
 
-        beam_list = [Beam(beam_size, n_best=self.n_best, cuda=self.cuda, global_scorer=self.global_scorer, pad=self.pad_idx, eos=self.eos_idx, bos=self.bos_idx) for _ in range(batch_size)]
+        beam_list = [Beam(beam_size, n_best=self.n_best, cuda=self.cuda, global_scorer=self.global_scorer, pad=self.pad_idx, eos=self.eos_idx, bos=self.bos_idx, max_eos_per_output_seq=max_eos_per_output_seq) for _ in range(batch_size)]
 
         # Help functions for working with beams and batches
         def var(a):
@@ -145,6 +145,9 @@ class SequenceGenerator(object):
             if self.copy_attn:
                 decoder_input = decoder_input.masked_fill(
                     decoder_input.gt(self.model.vocab_size - 1), self.model.unk_idx)
+
+            # Convert the generated eos token to bos token, only useful in one2many_mode=2 or one2many_mode=3
+            decoder_input = decoder_input.masked_fill(decoder_input == self.eos_idx, self.bos_idx)
 
             # run one step of decoding
             # [flattened_batch, vocab_size], [dec_layers, flattened_batch, decoder_size], [flattened_batch, memory_bank_size], [flattened_batch, src_len], [flattened_batch, src_len]

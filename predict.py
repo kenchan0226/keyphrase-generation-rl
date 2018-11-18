@@ -68,8 +68,12 @@ def process_opt(opt):
     if opt.one2many and opt.one2many_mode == 0:
         raise ValueError("If you choose one2many, you must specify the one2many mode.")
 
-    if opt.greedy and not opt.one2many:
-        raise ValueError("Greedy sampling can only be used in one2many mode.")
+    #if opt.greedy and not opt.one2many:
+    #    raise ValueError("Greedy sampling can only be used in one2many mode.")
+
+    if opt.one2many_mode not in [2, 3] and opt.max_eos_per_output_seq != 1:
+        raise ValueError("You cannot specify the max_eos_per_output_seq unless your are using one2many_mode 2 or 3")
+
     return opt
 
 
@@ -95,7 +99,13 @@ def predict(test_data_loader, model, opt):
                                   cuda=opt.gpuid > -1,
                                   n_best=opt.n_best
                                   )
+    """
     if opt.one2many and opt.one2many_mode > 1:
+        prediction_by_sampling(generator, test_data_loader, opt, delimiter_word)
+    else:
+        evaluate_beam_search(generator, test_data_loader, opt, delimiter_word)
+    """
+    if opt.sampling:
         prediction_by_sampling(generator, test_data_loader, opt, delimiter_word)
     else:
         evaluate_beam_search(generator, test_data_loader, opt, delimiter_word)

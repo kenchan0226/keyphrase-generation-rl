@@ -243,8 +243,8 @@ def train_opts(parser):
     parser.add_argument('-topk', type=int, default=10,
                         help='The only pick the top k predictions in reward.')
     parser.add_argument('-reward_type', default='0', type=int,
-                        choices=[0, 1, 2, 3, 4, 5, 6],
-                        help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg, 5: alpha-dcg, 6: AP""")
+                        choices=[0, 1, 2, 3, 4, 5, 6, 7],
+                        help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg, 5: alpha-dcg, 6: AP, 7: F1 penalize duplicate""")
     parser.add_argument('-match_type', default='exact',
                         choices=['exact', 'sub'],
                         help="""Either exact matching or substring matching.""")
@@ -438,14 +438,18 @@ def predict_opts(parser):
                         help="Path of experiment log/plot.")
     parser.add_argument('-one2many', action="store_true", default=False,
                         help='If true, it will not split a sample into multiple src-keyphrase pairs')
-    parser.add_argument('-greedy', action="store_true", default=False,
-                        help='Use greedy decoding instead of sampling in one2many mode')
+    #parser.add_argument('-greedy', action="store_true", default=False,
+    #                    help='Use greedy decoding instead of sampling in one2many mode')
     parser.add_argument('-one2many_mode', type=int, choices=[0, 1, 2, 3], default=0,
                         help='Only effective when one2many=True. 0 is a dummy option which takes no effect. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
     #parser.add_argument('-num_predictions', type=int, default=1,
     #                    help='Control the number of predictions when one2many_mode=2.')
+    parser.add_argument('-max_eos_per_output_seq', type=int, default=1, # max_eos_per_seq
+                        help='Specify the max number of eos in one output sequences to control the number of keyphrases in one output sequence. Only effective when one2many_mode=3 or one2many_mode=2.')
+    parser.add_argument('-sampling', action="store_true",
+                        help='Use sampling instead of beam search to generate the predictions.')
 
 
 def post_predict_opts(parser):
@@ -533,8 +537,8 @@ def interactive_predict_opts(parser):
     #                    help="Path of experiment log/plot.")
     parser.add_argument('-one2many', action="store_true", default=False,
                         help='If true, it will not split a sample into multiple src-keyphrase pairs')
-    parser.add_argument('-greedy', action="store_true", default=False,
-                        help='Use greedy decoding instead of sampling in one2many mode')
+    #parser.add_argument('-greedy', action="store_true", default=False,
+    #                    help='Use greedy decoding instead of sampling in one2many mode')
     parser.add_argument('-one2many_mode', type=int, choices=[0, 1, 2, 3], default=0,
                         help='Only effective when one2many=True. 0 is a dummy option which takes no effect. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],

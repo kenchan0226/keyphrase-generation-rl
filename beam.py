@@ -9,7 +9,7 @@ class Beam:
                  min_length=0,
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
-                 exclusion_tokens=set()):
+                 exclusion_tokens=set(), max_eos_per_output_seq=1):
         self.size = size
         self.tt = torch.cuda if cuda else torch
 
@@ -47,6 +47,9 @@ class Beam:
         self.stepwise_penalty = stepwise_penalty
         self.block_ngram_repeat = block_ngram_repeat
         self.exclusion_tokens = exclusion_tokens
+
+        self.eos_counters = torch.zeros(size, dtype=torch.long).to(self.next_ys[0].device)  # Store the number of emitted eos token for each hypothesis sequence
+        self.max_eos_per_output_seq = max_eos_per_output_seq  # The max. number of eos token that a hypothesis sequence can have
 
     def get_current_tokens(self):
         """Get the outputs for the current timestep."""
@@ -101,9 +104,9 @@ class Beam:
         # Sum the previous scores
         if len(self.prev_ks) > 0:
             beam_scores = word_logits + self.scores.unsqueeze(1).expand_as(word_logits)
-            # Don't let EOS have children.
+            # Don't let EOS have children. If it have reached the max number of eos.
             for i in range(self.next_ys[-1].size(0)):
-                if self.next_ys[-1][i] == self._eos:
+                if self.next_ys[-1][i] == self._eos and self.eos_counters[i] >= self.max_eos_per_output_seq:
                     beam_scores[i] = -1e20
             # To be implemented: block n-gram repeated
 
@@ -115,22 +118,25 @@ class Beam:
         self.all_scores.append(self.scores)  # list of tensor with size [beam_size]
         self.scores = best_scores
 
-        # best_scores_idx indicate the idx in the flattened beam * vocab_isze array, so need to convert
+        # best_scores_idx indicate the idx in the flattened beam * vocab_size array, so need to convert
         # the idx back to which beam and word each score came from.
         prev_k = best_scores_idx / vocab_size  # convert it to the beam indices that the top k scores came from, LongTensor, size: [beam_size]
         self.prev_ks.append(prev_k)
         self.next_ys.append((best_scores_idx - prev_k * vocab_size))  # convert it to the vocab indices, LongTensor, size: [beam_size]
         self.attn.append(attn_dist.index_select(0, prev_k))  # select the attention dist from the corresponding beam, size: [beam_size, src_len]
         self.global_scorer.update_global_state(self)  # update coverage vector, previous coverage penalty, and cov_total
+        self.update_eos_counter()  # update the eos_counter according to prev_ks
 
-        for i in range(self.next_ys[-1].size(0)): # For each generated token in the current step, check if it is EOS
+        for i in range(self.next_ys[-1].size(0)):  # For each generated token in the current step, check if it is EOS
             if self.next_ys[-1][i] == self._eos:
-                global_scores = self.global_scorer.score(self, self.scores)  # compute the score penalize by length and coverage
-                s = global_scores[i]
-                self.finished.append((s, len(self.next_ys) - 1, i))  # penalized score, length of sequence, beam_idx
+                self.eos_counters[i] += 1
+                if self.eos_counters[i] == self.max_eos_per_output_seq:  # compute the score penalize by length and coverage amd append add it to finished
+                    global_scores = self.global_scorer.score(self, self.scores)
+                    s = global_scores[i]
+                    self.finished.append((s, len(self.next_ys) - 1, i))  # penalized score, length of sequence, beam_idx
 
-        # End condition is when top-of-beam is EOS and no global score.
-        if self.next_ys[-1][0] == self._eos:
+        # End condition is when top-of-beam is EOS (and its number of EOS tokens reached the max) and no global score.
+        if self.next_ys[-1][0] == self._eos and self.eos_counters[0] == self.max_eos_per_output_seq:
             self.all_scores.append(self.scores)
             self.eos_top = True
 
@@ -148,6 +154,10 @@ class Beam:
         scores = [sc for sc, _, _ in self.finished]
         ks = [(t,k) for _, t, k in self.finished]
         return scores, ks
+
+    def update_eos_counter(self):
+        # update the eos_counter according to prev_ks
+        self.eos_counters = self.eos_counters.index_select(0, self.prev_ks[-1])
 
 
 class GNMTGlobalScorer:
