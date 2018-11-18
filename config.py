@@ -543,3 +543,7 @@ def interactive_predict_opts(parser):
                         help='Only effective when one2many=True. 0 is a dummy option which takes no effect. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
                         help='If type is 0, use <sep> to separate keyphrases. If type is 1, use <eos> to separate keyphrases')
+    parser.add_argument('-max_eos_per_output_seq', type=int, default=1,  # max_eos_per_seq
+                        help='Specify the max number of eos in one output sequences to control the number of keyphrases in one output sequence. Only effective when one2many_mode=3 or one2many_mode=2.')
+    parser.add_argument('-sampling', action="store_true",
+                        help='Use sampling instead of beam search to generate the predictions.')
