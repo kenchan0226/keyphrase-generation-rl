@@ -460,6 +460,9 @@ class SequenceGenerator(object):
             #    unfinished_mask = pred_counters < num_predictions
             #    unfinished_mask_all.append(unfinished_mask)
 
+        for sample in sample_list:
+            sample['attention'] = torch.stack(sample['attention'], dim=0)  # [trg_len, src_len]
+
         log_selected_token_dist = torch.cat(log_selected_token_dist, dim=1)  # [batch, t]
         assert log_selected_token_dist.size() == torch.Size([batch_size, t+1])
         #output_mask = torch.ne(prediction_all, self.pad_idx)[:, :t+1]  # [batch, t]

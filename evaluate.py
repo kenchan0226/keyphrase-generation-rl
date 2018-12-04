@@ -114,7 +114,10 @@ def evaluate_reward(data_loader, generator, opt):
             sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _ = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=0)
-            pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
+            #pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
+            pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
+                                                        delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk,
+                                                        src_str_list)
             #print(pred_str_2dlist)
             sample_time = time_since(start_time)
             sample_time_total += sample_time
@@ -177,7 +180,7 @@ def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
-                                                        delimiter_word)
+                                                        delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk, src_str_list)
             # recover the original order in the dataset
             seq_pairs = sorted(zip(original_idx_list, pred_str_2dlist),
                                key=lambda p: p[0])
@@ -270,18 +273,20 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
     return present_index
 '''
 
-def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_lists, eos_idx):
+
+def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_lists, eos_idx, unk_idx, replace_unk, src_str_list):
     batch_size = beam_search_result['batch_size']
     predictions = beam_search_result['predictions']
     scores = beam_search_result['scores']
     attention = beam_search_result['attention']
     assert len(predictions) == batch_size
     pred_list = []  # a list of dict, with len = batch_size
-    for pred_n_best, score_n_best, attn_n_best, oov in zip(predictions, scores, attention, oov_lists):
+    for pred_n_best, score_n_best, attn_n_best, oov, src_word_list in zip(predictions, scores, attention, oov_lists, src_str_list):
+        # attn_n_best: list of tensor with size [trg_len, src_len], len=n_best
         pred_dict = {}
         sentences_n_best = []
-        for pred in pred_n_best:
-            sentence = prediction_to_sentence(pred, idx2word, vocab_size, oov, eos_idx)
+        for pred, attn in zip(pred_n_best, attn_n_best):
+            sentence = prediction_to_sentence(pred, idx2word, vocab_size, oov, eos_idx, unk_idx, replace_unk, src_word_list, attn)
             #sentence = [idx2word[int(idx.item())] if int(idx.item()) < vocab_size else oov[int(idx.item())-vocab_size] for idx in pred[:-1]]
             sentences_n_best.append(sentence)
         pred_dict['sentences'] = sentences_n_best  # a list of list of word, with len [n_best, out_seq_len], does not include tbe final <EOS>
@@ -289,6 +294,7 @@ def preprocess_beam_search_result(beam_search_result, idx2word, vocab_size, oov_
         pred_dict['attention'] = attn_n_best  # a list of FloatTensor[output sequence length, src_len], with len = [n_best]
         pred_list.append(pred_dict)
     return pred_list
+
 
 def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<sep>'):
     #score_dict_all = defaultdict(list)  # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
@@ -320,7 +326,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
             src_oov = src_oov.to(opt.device)
 
             beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.max_eos_per_output_seq)
-            pred_list = preprocess_beam_search_result(beam_search_result, opt.idx2word, opt.vocab_size, oov_lists, opt.word2idx[pykp.io.EOS_WORD])
+            pred_list = preprocess_beam_search_result(beam_search_result, opt.idx2word, opt.vocab_size, oov_lists, opt.word2idx[pykp.io.EOS_WORD], opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk, src_str_list)
             # list of {"sentences": [], "scores": [], "attention": []}
 
             # recover the original order in the dataset

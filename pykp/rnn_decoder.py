@@ -8,7 +8,7 @@ import math
 import logging
 
 class RNNDecoder(nn.Module):
-    def __init__(self, vocab_size, embed_size, hidden_size, num_layers, memory_bank_size, coverage_attn, copy_attn, review_attn, pad_idx, dropout=0.0):
+    def __init__(self, vocab_size, embed_size, hidden_size, num_layers, memory_bank_size, coverage_attn, copy_attn, review_attn, pad_idx, attn_mode, dropout=0.0):
         super(RNNDecoder, self).__init__()
         #self.input_size = input_size
         #self.input_size = embed_size + memory_bank_size
@@ -32,7 +32,8 @@ class RNNDecoder(nn.Module):
         self.attention_layer = Attention(
             decoder_size=hidden_size,
             memory_bank_size=memory_bank_size,
-            coverage_attn=coverage_attn
+            coverage_attn=coverage_attn,
+            attn_mode=attn_mode
         )
         if copy_attn:
             self.p_gen_linear = nn.Linear(embed_size + hidden_size + memory_bank_size, 1)
@@ -47,7 +48,8 @@ class RNNDecoder(nn.Module):
             self.review_attention_layer = Attention(
             decoder_size=hidden_size,
             memory_bank_size=hidden_size,
-            coverage_attn=False
+            coverage_attn=False,
+            attn_mode=attn_mode
             )
         else:
             self.vocab_dist_linear_1 = nn.Linear(hidden_size + memory_bank_size, hidden_size)

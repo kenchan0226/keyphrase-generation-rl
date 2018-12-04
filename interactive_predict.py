@@ -23,6 +23,23 @@ def process_opt(opt):
         opt.gpuid = -1
         print("CUDA is not available, fall back to CPU.")
 
+    opt.exp = 'predict.' + opt.exp
+    if hasattr(opt, 'copy_attention') and opt.copy_attention:
+        opt.exp += '.copy'
+
+    if hasattr(opt, 'coverage_attn') and opt.coverage_attn:
+        opt.exp += '.coverage'
+
+    if hasattr(opt, 'bidirectional'):
+        if opt.bidirectional:
+            opt.exp += '.bi-directional'
+    else:
+        opt.exp += '.uni-directional'
+
+        # fill time into the name
+    if opt.pred_path.find('%s') > 0:
+        opt.pred_path = opt.pred_path % (opt.exp, opt.timemark)
+
     if not os.path.exists(opt.pred_path):
         os.makedirs(opt.pred_path)
 
@@ -44,18 +61,22 @@ def main(opt):
     # read tokenized text file and convert them to 2d list of words
     src_file = opt.src_file
     trg_file = opt.trg_file
-    tokenized_train_pairs = read_src_and_trg_files(src_file, trg_file, is_train=False)  # 2d list of word
+    tokenized_train_pairs = read_src_and_trg_files(src_file, trg_file, is_train=False, remove_eos=opt.remove_title_eos)  # 2d list of word
     # convert the 2d list of words to a list of dictionary, with keys 'src', 'src_oov', 'trg', 'trg_copy', 'src_str', 'trg_str', 'oov_dict', 'oov_list'
     test_one2many = build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode="one2many", include_original=True)
     # build the data loader
     test_one2many_dataset = KeyphraseDataset(test_one2many, word2idx=word2idx, idx2word=idx2word,
-                                             type='one2many', delimiter_type=opt.delimiter_type, load_train=False)
+                                             type='one2many', delimiter_type=opt.delimiter_type, load_train=False, remove_src_eos=opt.remove_src_eos)
     test_loader = DataLoader(dataset=test_one2many_dataset,
                              collate_fn=test_one2many_dataset.collate_fn_one2many,
                              num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
                              shuffle=False)
     # init the pretrained model
     model = predict.init_pretrained_model(opt)
+
+    # Print out predict path
+    print("Prediction path: %s" % opt.pred_path)
+
     # predict the keyphrases of the src file and output it to opt.pred_path/predictions.txt
     predict.predict(test_loader, model, opt)
 

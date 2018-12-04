@@ -190,7 +190,8 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask, entropy = generator.sample(
         src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
         one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, entropy_regularize=entropy_regularize)
-    pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
+    pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk,
+                              src_str_list)
     sample_time = time_since(start_time)
     max_pred_seq_len = log_selected_token_dist.size(1)
 
@@ -212,7 +213,8 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
                                                                              perturb_std=baseline_perturb_std)
             greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
                                                           eos_idx,
-                                                          delimiter_word)
+                                                          delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk,
+                                                        src_str_list)
         generator.model.train()
 
     # Compute the reward for each predicted keyphrase

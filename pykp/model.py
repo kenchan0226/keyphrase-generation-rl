@@ -44,6 +44,8 @@ class Seq2SeqModel(nn.Module):
         self.share_embeddings = opt.share_embeddings
         self.review_attn = opt.review_attn
 
+        self.attn_mode = opt.attn_mode
+
         '''
         self.attention_mode = opt.attention_mode    # 'dot', 'general', 'concat'
         self.input_feeding = opt.input_feeding
@@ -101,6 +103,7 @@ class Seq2SeqModel(nn.Module):
             copy_attn=self.copy_attn,
             review_attn=self.review_attn,
             pad_idx=self.pad_idx_trg,
+            attn_mode=self.attn_mode,
             dropout=self.dropout
         )
 

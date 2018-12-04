@@ -4,11 +4,13 @@ from evaluate_prediction import *
 import torch
 
 
-def sample_list_to_str_2dlist(sample_list, oov_lists, idx2word, vocab_size, eos_idx, delimiter_word):
+def sample_list_to_str_2dlist(sample_list, oov_lists, idx2word, vocab_size, eos_idx, delimiter_word, unk_idx=None, replace_unk=False, src_str_list=None):
     """Convert a list of sample dict to a 2d list of predicted keyphrases"""
     pred_str_2dlist = []  #  a 2dlist, len(pred_str_2d_list)=batch_size, len(pred_str_2d_list[0])=
-    for sample, oov in zip(sample_list, oov_lists):
-        word_list = prediction_to_sentence(sample['prediction'], idx2word, vocab_size, oov, eos_idx)
+    for sample, oov, src_word_list in zip(sample_list, oov_lists, src_str_list):
+        # sample['prediction']: list of 0-dim tensor, len=trg_len
+        # sample['attention']: tensor with size [trg_len, src_len]
+        word_list = prediction_to_sentence(sample['prediction'], idx2word, vocab_size, oov, eos_idx, unk_idx, replace_unk, src_word_list, sample['attention'])
         pred_str_list = split_concated_keyphrases(word_list, delimiter_word)
         pred_str_2dlist.append(pred_str_list)
     return pred_str_2dlist

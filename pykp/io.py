@@ -27,7 +27,7 @@ DIGIT = '<digit>'
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2idx, idx2word, type='one2many', delimiter_type=0, load_train=True):
+    def __init__(self, examples, word2idx, idx2word, type='one2many', delimiter_type=0, load_train=True, remove_src_eos=False):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         assert type in ['one2one', 'one2many']
         if type == 'one2one':
@@ -63,6 +63,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         else:
             self.delimiter = self.word2idx[EOS_WORD]
         self.load_train = load_train
+        self.remove_src_eos = remove_src_eos
 
     def __getitem__(self, index):
         return self.examples[index]
@@ -91,18 +92,30 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         Puts each data field into a tensor with outer dimension batch size"
         '''
         assert self.type == 'one2one', 'The type of dataset should be one2one.'
+        if self.remove_src_eos:
+            # source with oov words replaced by <unk>
+            src = [b['src'] for b in batches]
+            # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
+            src_oov = [b['src_oov'] for b in batches]
+        else:
+            # source with oov words replaced by <unk>
+            src = [b['src'] + [self.word2idx[EOS_WORD]] for b in batches]
+            # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
+            src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
+
+        """
         src = [b['src'] + [self.word2idx[EOS_WORD]] for b in batches]
         # src = [[self.word2idx[BOS_WORD]] + b['src'] + [self.word2idx[EOS_WORD]] for b in batches]
+        # extended src (unk words are replaced with temporary idx, e.g. 50000, 50001 etc.)
+        src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
+        # src_oov = [[self.word2idx[BOS_WORD]] + b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
+        """
 
         # target_input: input to decoder, ends with <eos> and oovs are replaced with <unk>
         trg = [b['trg'] + [self.word2idx[EOS_WORD]] for b in batches]
 
         # target for copy model, ends with <eos>, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
         trg_oov = [b['trg_copy'] + [self.word2idx[EOS_WORD]] for b in batches]
-
-        # extended src (unk words are replaced with temporary idx, e.g. 50000, 50001 etc.)
-        src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
-        # src_oov = [[self.word2idx[BOS_WORD]] + b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
 
         oov_lists = [b['oov_list'] for b in batches]
 
@@ -121,10 +134,16 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
     def collate_fn_one2many(self, batches):
         assert self.type == 'one2many', 'The type of dataset should be one2many.'
-        # source with oov words replaced by <unk>
-        src = [b['src'] + [self.word2idx[EOS_WORD]] for b in batches]
-        # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
-        src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
+        if self.remove_src_eos:
+            # source with oov words replaced by <unk>
+            src = [b['src'] for b in batches]
+            # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
+            src_oov = [b['src_oov'] for b in batches]
+        else:
+            # source with oov words replaced by <unk>
+            src = [b['src'] + [self.word2idx[EOS_WORD]] for b in batches]
+            # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
+            src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
 
         batch_size = len(src)
 

@@ -5,17 +5,17 @@ import pickle
 import pykp.io
 import config
 
-def read_tokenized_src_file(path, concat_title=True):
+def read_tokenized_src_file(path, remove_eos=True):
     """
     read tokenized source text file and convert them to list of list of words
     :param path:
-    :param concat_title: concatenate the words in title and content
+    :param remove_eos: concatenate the words in title and content
     :return: data, a 2d list, each item in the list is a list of words of a src text, len(data) = num_lines
     """
     data = []
     with open(path) as f:
         for line in f:
-            if concat_title:
+            if remove_eos:
                 title_and_context = line.strip().split('<eos>')
                 if len(title_and_context) == 1:  # it only has context without title
                     [context] = title_and_context
@@ -25,9 +25,9 @@ def read_tokenized_src_file(path, concat_title=True):
                     word_list = title.strip().split(' ') + context.strip().split(' ')
                 else:
                     raise ValueError("The source text contains more than one title")
-                data.append(word_list)
             else:
-                raise ValueError('Not yet implement the function of separating title and context')
+                word_list = line.strip().split(' ')
+            data.append(word_list)
     return data
 
 def read_tokenized_trg_file(path):
@@ -44,13 +44,13 @@ def read_tokenized_trg_file(path):
             data.append(trg_word_list)
     return data
 
-def read_src_and_trg_files(src_file, trg_file, is_train, concat_title=True):
+def read_src_and_trg_files(src_file, trg_file, is_train, remove_eos=True):
     tokenized_train_src = []
     tokenized_train_trg = []
     filtered_cnt = 0
     for src_line, trg_line in zip(open(src_file, 'r'), open(trg_file, 'r')):
         # process source line
-        if concat_title:
+        if remove_eos:
             title_and_context = src_line.strip().split('<eos>')
             if len(title_and_context) == 1:  # it only has context without title
                 [context] = title_and_context
@@ -63,7 +63,7 @@ def read_src_and_trg_files(src_file, trg_file, is_train, concat_title=True):
             #[title, context] = src_line.strip().split('<eos>')
             #src_word_list = title.strip().split(' ') + context.strip().split(' ')
         else:
-            raise ValueError('Not yet implement the function of separating title and context')
+            src_word_list = src_line.strip().split(' ')
         # process target line
         trg_list = trg_line.strip().split(';')  # a list of target sequences
         trg_word_list = [trg.split(' ') for trg in trg_list]
@@ -122,7 +122,7 @@ def main(opt):
     # Preprocess training data
     """
     # Tokenize train_src and train_trg
-    tokenized_train_src = read_tokenized_src_file(opt.train_src, concat_title=True)
+    tokenized_train_src = read_tokenized_src_file(opt.train_src, remove_eos=opt.remove_eos)
     tokenized_train_trg = read_tokenized_trg_file(opt.train_trg)
 
     assert len(tokenized_train_src) == len(tokenized_train_trg), 'the number of records in source and target are not the same'
@@ -135,7 +135,7 @@ def main(opt):
     """
 
     # Tokenize train_src and train_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
-    tokenized_train_pairs = read_src_and_trg_files(opt.train_src, opt.train_trg, is_train=True, concat_title=True)
+    tokenized_train_pairs = read_src_and_trg_files(opt.train_src, opt.train_trg, is_train=True, remove_eos=opt.remove_eos)
 
     # build vocab from training src
     # build word2id, id2word, and vocab, where vocab is a counter
@@ -162,7 +162,7 @@ def main(opt):
     # Preprocess validation data
     """
     # Tokenize
-    tokenized_valid_src = read_tokenized_src_file(opt.valid_src, concat_title=True)
+    tokenized_valid_src = read_tokenized_src_file(opt.valid_src, remove_eos=opt.remove_eos)
     tokenized_valid_trg = read_tokenized_trg_file(opt.valid_trg)
     assert len(tokenized_valid_src) == len(
         tokenized_valid_trg), 'the number of records in source and target are not the same'
@@ -172,7 +172,7 @@ def main(opt):
     del tokenized_valid_trg
     """
     # Tokenize valid_src and valid_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
-    tokenized_valid_pairs = read_src_and_trg_files(opt.valid_src, opt.valid_trg, is_train=False, concat_title=True)
+    tokenized_valid_pairs = read_src_and_trg_files(opt.valid_src, opt.valid_trg, is_train=False, remove_eos=opt.remove_eos)
 
     # building preprocessed validation set for one2one and one2many training mode
     valid_one2one = pykp.io.build_dataset(
@@ -186,7 +186,7 @@ def main(opt):
 
     # Preprocess test data
     """
-    tokenized_test_src = read_tokenized_src_file(opt.test_src, concat_title=True)
+    tokenized_test_src = read_tokenized_src_file(opt.test_src, remove_eos=opt.remove_eos)
     tokenized_test_trg = read_tokenized_trg_file(opt.test_trg)
     assert len(tokenized_test_src) == len(
         tokenized_test_trg), 'the number of records in source and target are not the same'
@@ -196,7 +196,7 @@ def main(opt):
     del tokenized_test_trg
     """
     # Tokenize train_src and train_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
-    tokenized_test_pairs = read_src_and_trg_files(opt.test_src, opt.test_trg, is_train=False, concat_title=True)
+    tokenized_test_pairs = read_src_and_trg_files(opt.test_src, opt.test_trg, is_train=False, remove_eos=opt.remove_eos)
 
     # building preprocessed test set for one2one and one2many training mode
     test_one2one = pykp.io.build_dataset(
@@ -243,6 +243,7 @@ if __name__ == "__main__":
     # data_dir should contains six files, train_src.txt, train_trg.txt, valid_src.txt, valid_trg.txt, test_src.txt, test_trg.txt
 
     parser.add_argument('-data_dir', required=True, help='The source file of the data')
+    parser.add_argument('-remove_eos', action="store_true", help='Remove the eos after the title')
     config.vocab_opts(parser)
     #parser.add_argument('-vocab_size', default=50000, type=int, help='Max. number of words in vocab')
     #parser.add_argument('-max_unk_words', default=1000, type=int, help='Max. number of words in OOV vocab')

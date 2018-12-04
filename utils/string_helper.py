@@ -1,9 +1,11 @@
 from nltk.stem.porter import *
 stemmer = PorterStemmer()
+import pykp
 
-def prediction_to_sentence(prediction, idx2word, vocab_size, oov, eos_idx):
+def prediction_to_sentence(prediction, idx2word, vocab_size, oov, eos_idx, unk_idx=None, replace_unk=False, src_word_list=None, attn_dist=None):
     """
     :param prediction: a list of 0 dim tensor
+    :param attn_dist: tensor with size [trg_len, src_len]
     :return: a list of words, does not include the final EOS
     """
     sentence = []
@@ -12,7 +14,17 @@ def prediction_to_sentence(prediction, idx2word, vocab_size, oov, eos_idx):
         if i == len(prediction) - 1 and _pred == eos_idx:  # ignore the final EOS token
             break
         if _pred < vocab_size:
-            word = idx2word[_pred]
+            if _pred == unk_idx and replace_unk:
+                assert src_word_list is not None and attn_dist is not None, "If you need to replace unk, you must supply src_word_list and attn_dist"
+                #_, max_attn_idx = attn_dist[i].max(0)
+                _, max_attn_idx = attn_dist[i].topk(2, dim=0)
+                if max_attn_idx[0] < len(src_word_list):
+                    word = src_word_list[int(max_attn_idx[0].item())]
+                else:
+                    word = src_word_list[int(max_attn_idx[1].item())]
+                    #word = pykp.io.EOS_WORD
+            else:
+                word = idx2word[_pred]
         else:
             word = oov[_pred - vocab_size]
         sentence.append(word)

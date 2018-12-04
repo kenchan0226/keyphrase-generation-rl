@@ -89,6 +89,10 @@ def model_opts(parser):
                         help="An additional layer between the encoder and the decoder")
 
     # Attention options
+    parser.add_argument('-attn_mode', type=str, default='concat',
+                       choices=['general', 'concat'],
+                       help="""The attention type to use:
+                       dot or general (Luong) or concat (Bahdanau)""")
     #parser.add_argument('-attention_mode', type=str, default='concat',
     #                    choices=['dot', 'general', 'concat'],
     #                    help="""The attention type to use:
@@ -293,6 +297,10 @@ def train_opts(parser):
                         help='0: no regularization, 1: -ve percentage of repetitions, 2: entropy')
     parser.add_argument('-regularization_factor', type=float, default=0.0,
                         help="Factor of regularization")
+    parser.add_argument('-replace_unk', action="store_true",
+                        help='Replace the unk token with the token of highest attention score.')
+    parser.add_argument('-remove_src_eos', action="store_true",
+                        help='Remove the eos token at the end of src text')
 
     # GPU
 
@@ -450,6 +458,10 @@ def predict_opts(parser):
                         help='Specify the max number of eos in one output sequences to control the number of keyphrases in one output sequence. Only effective when one2many_mode=3 or one2many_mode=2.')
     parser.add_argument('-sampling', action="store_true",
                         help='Use sampling instead of beam search to generate the predictions.')
+    parser.add_argument('-replace_unk', action="store_true",
+                        help='Replace the unk token with the token of highest attention score.')
+    parser.add_argument('-remove_src_eos', action="store_true",
+                        help='Remove the eos token at the end of src text')
 
 
 def post_predict_opts(parser):
@@ -531,8 +543,8 @@ def interactive_predict_opts(parser):
                         help="Path of outputs of predictions.")
     parser.add_argument('-pred_file_prefix', type=str, default="",
                         help="Prefix of prediction file.")
-    #parser.add_argument('-exp', type=str, default="kp20k",
-    #                    help="Name of the experiment for logging.")
+    parser.add_argument('-exp', type=str, default="kp20k",
+                        help="Name of the experiment for logging.")
     #parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
     #                    help="Path of experiment log/plot.")
     parser.add_argument('-one2many', action="store_true", default=False,
@@ -547,3 +559,9 @@ def interactive_predict_opts(parser):
                         help='Specify the max number of eos in one output sequences to control the number of keyphrases in one output sequence. Only effective when one2many_mode=3 or one2many_mode=2.')
     parser.add_argument('-sampling', action="store_true",
                         help='Use sampling instead of beam search to generate the predictions.')
+    parser.add_argument('-replace_unk', action="store_true",
+                            help='Replace the unk token with the token of highest attention score.')
+    parser.add_argument('-remove_src_eos', action="store_true",
+                        help='Remove the eos token at the end of src text')
+    parser.add_argument('-remove_title_eos', action="store_true", default=False,
+                        help='Remove the eos token at the end of title')
