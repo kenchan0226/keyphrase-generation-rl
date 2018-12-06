@@ -32,7 +32,9 @@ class SequenceGenerator(object):
                  length_penalty='avg',
                  coverage_penalty='none',
                  cuda=True,
-                 n_best=None
+                 n_best=None,
+                 block_ngram_repeat=0,
+                 ignore_when_blocking=[]
                  ):
         """Initializes the generator.
 
@@ -66,12 +68,14 @@ class SequenceGenerator(object):
         self.global_scorer = GNMTGlobalScorer(length_penalty_factor, coverage_penalty_factor, coverage_penalty, length_penalty)
         self.cuda = cuda
         self.review_attn = review_attn
+        self.block_ngram_repeat = block_ngram_repeat
+        self.ignore_when_blocking = ignore_when_blocking
         if n_best is None:
             self.n_best = self.beam_size
         else:
             self.n_best = n_best
 
-    def beam_search(self, src, src_lens, src_oov, src_mask, oov_lists, max_eos_per_output_seq=1):
+    def beam_search(self, src, src_lens, src_oov, src_mask, oov_lists, word2idx, max_eos_per_output_seq=1):
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
         :param src_lens: a list containing the length of src sequences for each batch, with len=batch
@@ -116,7 +120,11 @@ class SequenceGenerator(object):
         src_oov = src_oov.repeat(self.beam_size, 1)  # [batch * beam_size, src_seq_len]
         decoder_state = decoder_init_state.repeat(1, self.beam_size, 1)  # [dec_layers, batch_size * beam_size, decoder_size]
 
-        beam_list = [Beam(beam_size, n_best=self.n_best, cuda=self.cuda, global_scorer=self.global_scorer, pad=self.pad_idx, eos=self.eos_idx, bos=self.bos_idx, max_eos_per_output_seq=max_eos_per_output_seq) for _ in range(batch_size)]
+        # exclusion_list = ["<t>", "</t>", "."]
+        exclusion_tokens = set([word2idx[t]
+                                for t in self.ignore_when_blocking])
+
+        beam_list = [Beam(beam_size, n_best=self.n_best, cuda=self.cuda, global_scorer=self.global_scorer, pad=self.pad_idx, eos=self.eos_idx, bos=self.bos_idx, max_eos_per_output_seq=max_eos_per_output_seq, block_ngram_repeat=self.block_ngram_repeat, exclusion_tokens=exclusion_tokens) for _ in range(batch_size)]
 
         # Help functions for working with beams and batches
         def var(a):

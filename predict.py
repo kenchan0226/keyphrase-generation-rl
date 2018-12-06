@@ -97,7 +97,9 @@ def predict(test_data_loader, model, opt):
                                   length_penalty=opt.length_penalty,
                                   coverage_penalty=opt.coverage_penalty,
                                   cuda=opt.gpuid > -1,
-                                  n_best=opt.n_best
+                                  n_best=opt.n_best,
+                                  block_ngram_repeat=opt.block_ngram_repeat,
+                                  ignore_when_blocking=opt.ignore_when_blocking
                                   )
     """
     if opt.one2many and opt.one2many_mode > 1:

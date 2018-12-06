@@ -462,6 +462,12 @@ def predict_opts(parser):
                         help='Replace the unk token with the token of highest attention score.')
     parser.add_argument('-remove_src_eos', action="store_true",
                         help='Remove the eos token at the end of src text')
+    parser.add_argument('-block_ngram_repeat', type=int, default=0,
+                        help='Block repeat of n-gram')
+    parser.add_argument('-ignore_when_blocking', nargs='+', type=str,
+                        default=['<sep>'],
+                        help="""Ignore these strings when blocking repeats.
+                               You want to block sentence delimiters.""")
 
 
 def post_predict_opts(parser):
@@ -565,3 +571,9 @@ def interactive_predict_opts(parser):
                         help='Remove the eos token at the end of src text')
     parser.add_argument('-remove_title_eos', action="store_true", default=False,
                         help='Remove the eos token at the end of title')
+    parser.add_argument('-block_ngram_repeat', type=int, default=0,
+                        help='Block repeat of n-gram')
+    parser.add_argument('-ignore_when_blocking', nargs='+', type=str,
+                       default=['<sep>'],
+                       help="""Ignore these strings when blocking repeats.
+                           You want to block sentence delimiters.""")

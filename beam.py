@@ -109,6 +109,26 @@ class Beam:
                 if self.next_ys[-1][i] == self._eos and self.eos_counters[i] >= self.max_eos_per_output_seq:
                     beam_scores[i] = -1e20
             # To be implemented: block n-gram repeated
+            if self.block_ngram_repeat > 0:
+                ngrams = []
+                le = len(self.next_ys)
+                for j in range(self.next_ys[-1].size(0)):
+                    hyp, _ = self.get_hyp(le - 1, j)
+                    ngrams = set()
+                    fail = False
+                    gram = []
+                    for i in range(le - 1):
+                        # Last n tokens, n = block_ngram_repeat
+                        gram = (gram +
+                                [hyp[i].item()])[-self.block_ngram_repeat:]
+                        # Skip the blocking if it is in the exclusion list
+                        if set(gram) & self.exclusion_tokens:
+                            continue
+                        if tuple(gram) in ngrams:
+                            fail = True
+                        ngrams.add(tuple(gram))
+                    if fail:
+                        beam_scores[j] = -10e20
 
         else:  # This is the first decoding step, every beam are the same
             beam_scores = word_logits[0]
@@ -134,7 +154,11 @@ class Beam:
                     global_scores = self.global_scorer.score(self, self.scores)
                     s = global_scores[i]
                     self.finished.append((s, len(self.next_ys) - 1, i))  # penalized score, length of sequence, beam_idx
-
+            """
+            elif self.next_ys[-1][i] == self._unk:  # if it is unk, replace it with the w
+                _, max_attn_score_idx = self.attn[-1][i].max(0)
+                self.next_ys[-1][i] = max_attn_score_idx
+            """
         # End condition is when top-of-beam is EOS (and its number of EOS tokens reached the max) and no global score.
         if self.next_ys[-1][0] == self._eos and self.eos_counters[0] == self.max_eos_per_output_seq:
             self.all_scores.append(self.scores)

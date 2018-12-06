@@ -325,7 +325,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
             src_mask = src_mask.to(opt.device)
             src_oov = src_oov.to(opt.device)
 
-            beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.max_eos_per_output_seq)
+            beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.word2idx, opt.max_eos_per_output_seq)
             pred_list = preprocess_beam_search_result(beam_search_result, opt.idx2word, opt.vocab_size, oov_lists, opt.word2idx[pykp.io.EOS_WORD], opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk, src_str_list)
             # list of {"sentences": [], "scores": [], "attention": []}
 
@@ -341,7 +341,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
                 # oov: a list of oov words
                 pred_str_list = pred['sentences']  # predicted sentences from a single src, a list of list of word, with len=[beam_size, out_seq_len], does not include the final <EOS>
                 pred_score_list = pred['scores']
-                pred_attn_list = pred['attention']
+                pred_attn_list = pred['attention']  # a list of FloatTensor[output sequence length, src_len], with len = [n_best]
 
                 if opt.one2many:
                     all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
