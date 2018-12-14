@@ -6,7 +6,7 @@ EPS = 1e-8
 
 def masked_cross_entropy(class_dist, target, trg_mask, trg_lens=None,
                          coverage_attn=False, coverage=None, attn_dist=None, lambda_coverage=0, coverage_loss=False,
-                         delimiter_hidden_states=None, orthogonal_loss=False, lambda_orthogonal=0):
+                         delimiter_hidden_states=None, orthogonal_loss=False, lambda_orthogonal=0, delimiter_hidden_states_lens=None):
     """
     :param class_dist: [batch_size, trg_seq_len, num_classes]
     :param target: [batch_size, trg_seq_len]
@@ -16,6 +16,7 @@ def masked_cross_entropy(class_dist, target, trg_mask, trg_lens=None,
     :param coverage: [batch_size, trg_seq_len, src_seq_len]
     :param attn_dist: [batch_size, trg_seq_len, src_seq_len]
     :param lambda_coverage: scalar, coefficient for coverage loss
+    :param delimiter_hidden_states: [batch_size, decoder_size, num_delimiter]
     :return:
     """
     num_classes = class_dist.size(2)
@@ -39,7 +40,7 @@ def masked_cross_entropy(class_dist, target, trg_mask, trg_lens=None,
     '''
     loss = losses.sum(dim=1)  # [batch_size]
     if orthogonal_loss:
-        orthogonal_loss = compute_orthogonal_loss(delimiter_hidden_states)  # [batch_size]
+        orthogonal_loss = compute_orthogonal_loss(delimiter_hidden_states, delimiter_hidden_states_lens)  # [batch_size]
         loss = loss + lambda_orthogonal * orthogonal_loss
     loss = loss.sum()
 
@@ -86,13 +87,18 @@ def masked_coverage_loss(coverage, attn_dist, trg_mask):
     return coverage_losses.sum()
 
 
-def compute_orthogonal_loss(delimiter_hidden_states):
+def compute_orthogonal_loss(delimiter_hidden_states, delimiter_hidden_states_lens=None):
     """
-    :param delimiter_hidden_states: [batch_size, decoder_size, num_delimiter]
+    :param delimiter_hidden_states: [batch_size, decoder_size, max_num_delimiters]
     :return:
     """
-    batch_size, decoder_size, num_delimiter = delimiter_hidden_states.size()
-    identity = torch.eye(num_delimiter).unsqueeze(0).repeat(batch_size, 1, 1)  # [batch, num_delimiter, num_delimiter]
+    batch_size, decoder_size, max_num_delimiters = delimiter_hidden_states.size()
+    identity = torch.eye(max_num_delimiters).unsqueeze(0).repeat(batch_size, 1, 1).to(delimiter_hidden_states.device)  # [batch, max_num_delimiters, max_num_delimiters]
+    if delimiter_hidden_states_lens is not None:
+        assert len(delimiter_hidden_states) == batch_size
+        for i in range(batch_size):
+            for j in range(max_num_delimiters - 1, delimiter_hidden_states_lens[i] - 1, -1):
+                identity[i, j, j].fill_(0.0)
     orthogonal_loss_ = torch.bmm(torch.transpose(delimiter_hidden_states, 1, 2), delimiter_hidden_states) - identity  # [batch, num_delimiter, num_delimiter]
     orthogonal_loss = torch.norm(orthogonal_loss_.view(batch_size, -1), p=2, dim=1)  # [batch]
     return orthogonal_loss
@@ -154,11 +160,13 @@ def loss_debug():
     lambda_orthogonal = 0.03
     orthogonal_loss = True
 
+    delimiter_hidden_states_lens = [3, 5, 2, 1, 5]
+
     loss = masked_cross_entropy(class_dist, target, trg_mask, trg_lens=trg_lens,
                                 coverage_attn=coverage_attn, coverage=coverage, attn_dist=attn_dist,
                                 lambda_coverage=lambda_coverage, coverage_loss=coverage_loss,
                                 delimiter_hidden_states=delimiter_hidden_states, orthogonal_loss=orthogonal_loss,
-                                lambda_orthogonal=lambda_orthogonal)
+                                lambda_orthogonal=lambda_orthogonal, delimiter_hidden_states_lens=delimiter_hidden_states_lens)
     print(loss)
     return
 
@@ -175,22 +183,42 @@ def compute_orthogonal_loss_debug():
 
     batch_size_2 = 2
     decoder_size_2 = 10
-    num_delimiter_1 = 3
-    delimiter_hidden_states_2 = torch.zeros(batch_size_2, decoder_size_2, num_delimiter_1)
+    num_delimiter_2 = 3
+    delimiter_hidden_states_2 = torch.zeros(batch_size_2, decoder_size_2, num_delimiter_2)
     delimiter_hidden_states_2[0, 0, 0].fill_(1)
     delimiter_hidden_states_2[0, 1, 1].fill_(1)
     delimiter_hidden_states_2[0, 6, 2].fill_(1)
     delimiter_hidden_states_2[1, 5, 0].fill_(1)
     delimiter_hidden_states_2[1, 2, 1].fill_(1)
     delimiter_hidden_states_2[1, 2, 2].fill_(1)
-    ortho_loss_2 = compute_orthogonal_loss(delimiter_hidden_states_2)
+    delimiter_hidden_states_2_lens = [3, 3]
+    ortho_loss_2 = compute_orthogonal_loss(delimiter_hidden_states_2, delimiter_hidden_states_2_lens)
     #print(delimiter_hidden_states_2[0])
     print(ortho_loss_2)
-    assert ortho_loss_2.size() == torch.Size([batch_size_2])
-    assert ortho_loss_2[0].item() == 0.0
-    assert math.fabs(ortho_loss_2[1].item() - math.sqrt(2)) < 1e-3
+    assert ortho_loss_2.size() == torch.Size([batch_size_2]) and ortho_loss_2[0].item() == 0.0 and math.fabs(ortho_loss_2[1].item() - math.sqrt(2)) < 1e-3
+
+    batch_size_3 = 3
+    decoder_size_3 = 10
+    num_delimiter_3 = 4
+    delimiter_hidden_states_3 = torch.zeros(batch_size_3, decoder_size_3, num_delimiter_3)
+    delimiter_hidden_states_3[0, 0, 0].fill_(1)
+    delimiter_hidden_states_3[0, 1, 1].fill_(1)
+    delimiter_hidden_states_3[0, 6, 2].fill_(1)
+    delimiter_hidden_states_3[0, 7, 3].fill_(1)
+    delimiter_hidden_states_3[1, 5, 0].fill_(1)
+    delimiter_hidden_states_3[1, 2, 1].fill_(1)
+    delimiter_hidden_states_3[1, 2, 2].fill_(1)
+    delimiter_hidden_states_3[2, 3, 0].fill_(1)
+    delimiter_hidden_states_3[2, 3, 1].fill_(1)
+    delimiter_hidden_states_3_lens = [4, 3, 2]
+    ortho_loss_3 = compute_orthogonal_loss(delimiter_hidden_states_3, delimiter_hidden_states_3_lens)
+    # print(delimiter_hidden_states_2[0])
+    print(ortho_loss_3)
+    assert ortho_loss_2.size() == torch.Size([batch_size_2]) and ortho_loss_2[0].item() == 0.0 and math.fabs(
+        ortho_loss_2[1].item() - math.sqrt(2)) < 1e-3 and math.fabs(
+        ortho_loss_3[1].item() - math.sqrt(2)) < 1e-3
     print("Pass!")
 
 if __name__ == '__main__':
-    #compute_orthogonal_loss_debug()
+    compute_orthogonal_loss_debug()
     loss_debug()

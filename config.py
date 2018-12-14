@@ -42,6 +42,8 @@ def model_opts(parser):
     parser.add_argument('-share_embeddings', default=True, action='store_true',
                         help="""Share the word embeddings between encoder
                          and decoder.""")
+    parser.add_argument('-use_target_encoder', action='store_true',
+                        help="Use target decoder")
 
     # RNN Options
     parser.add_argument('-encoder_type', type=str, default='rnn',
@@ -60,6 +62,12 @@ def model_opts(parser):
                         help='Size of encoder hidden states')
     parser.add_argument('-decoder_size', type=int, default=300,
                         help='Size of decoder hidden states')
+    parser.add_argument('-target_encoder_size', type=int, default=64,
+                        help='Size of target encoder hidden states')
+    parser.add_argument('-source_representation_queue_size', type=int, default=128,
+                        help='Size of queue for storing the encoder representation for training the target encoder')
+    parser.add_argument('-source_representation_sample_size', type=int, default=32,
+                        help='Sample size of encoder representation for training the target encoder.')
     parser.add_argument('-dropout', type=float, default=0.1,
                         help="Dropout probability; applied in LSTM stacks.")
     # parser.add_argument('-input_feed', type=int, default=1,
@@ -126,6 +134,12 @@ def model_opts(parser):
                         help='Lambda value for coverage by See et al.')
     parser.add_argument('-coverage_loss', action="store_true", default=False,
                         help='whether to include coverage loss')
+    parser.add_argument('-orthogonal_loss', action="store_true", default=False,
+                        help='whether to include orthogonal loss')
+    parser.add_argument('-lambda_orthogonal', type=float, default=0.03,
+                        help='Lambda value for the orthogonal loss by Yuan et al.')
+    parser.add_argument('-lambda_target_encoder', type=float, default=0.03,
+                        help='Lambda value for the target encoder loss by Yuan et al.')
 
     # parser.add_argument('-context_gate', type=str, default=None,
     #                     choices=['source', 'target', 'both'],
@@ -247,7 +261,7 @@ def train_opts(parser):
     parser.add_argument('-topk', type=int, default=10,
                         help='The only pick the top k predictions in reward.')
     parser.add_argument('-reward_type', default='0', type=int,
-                        choices=[0, 1, 2, 3, 4, 5, 6, 7],
+                        choices=[0, 1, 2, 3, 4, 5, 6, 7, 8],
                         help="""Type of reward. 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg, 5: alpha-dcg, 6: AP, 7: F1 penalize duplicate""")
     parser.add_argument('-match_type', default='exact',
                         choices=['exact', 'sub'],
@@ -294,7 +308,7 @@ def train_opts(parser):
     #parser.add_argument('-perturb_decay_along_phrases', action="store_true", default=False,
     #                    help="Decay the perturbations along the predicted keyphrases, std=std/num_of_preds")
     parser.add_argument('-regularization_type', type=int, default=0, choices=[0, 1, 2],
-                        help='0: no regularization, 1: -ve percentage of repetitions, 2: entropy')
+                        help='0: no regularization, 1: percentage of unique keyphrases, 2: entropy')
     parser.add_argument('-regularization_factor', type=float, default=0.0,
                         help="Factor of regularization")
     parser.add_argument('-replace_unk', action="store_true",

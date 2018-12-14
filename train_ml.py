@@ -10,6 +10,8 @@ import torch
 import sys
 import os
 from utils.report import export_train_and_valid_loss
+from utils.source_representation_queue import SourceRepresentationQueue
+import numpy as np
 
 EPS = 1e-8
 
@@ -36,6 +38,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     best_valid_loss = float('inf')
     num_stop_dropping = 0
 
+    if opt.use_target_encoder:
+        source_representation_queue = SourceRepresentationQueue(opt.source_representation_queue_size)
+    else:
+        source_representation_queue = None
+
     if opt.train_from:  # opt.train_from:
         #TODO: load the training state
         raise ValueError("Not implemented the function of load from trained model")
@@ -55,7 +62,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             # Training
             if opt.train_ml:
-                batch_loss_stat, decoder_dist = train_one_batch(batch, model, optimizer_ml, opt, batch_i)
+                batch_loss_stat, decoder_dist = train_one_batch(batch, model, optimizer_ml, opt, batch_i, source_representation_queue)
                 report_train_loss_statistics.update(batch_loss_stat)
                 total_train_loss_statistics.update(batch_loss_stat)
                 #logging.info("one_batch")
@@ -150,7 +157,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     export_train_and_valid_loss(report_train_loss, report_valid_loss, report_train_ppl, report_valid_ppl, opt.checkpoint_interval, train_valid_curve_path)
     #logging.info('Overall average training loss: %.3f, ppl: %.3f' % (total_train_loss_statistics.xent(), total_train_loss_statistics.ppl()))
 
-def train_one_batch(batch, model, optimizer, opt, batch_i):
+def train_one_batch(batch, model, optimizer, opt, batch_i, source_representation_queue=None):
     if not opt.one2many:  # load one2one data
         src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
         """
@@ -171,7 +178,7 @@ def train_one_batch(batch, model, optimizer, opt, batch_i):
              if opt.delimiter_type = 0, SEP_WORD=<sep>, if opt.delimiter_type = 1, SEP_WORD=<eos>
         trg_oov: same as trg_oov, but all unk words are replaced with temporary idx, e.g. 50000, 50001 etc.
         """
-
+    batch_size = src.size(0)
     max_num_oov = max([len(oov) for oov in oov_lists])  # max number of oov for each batch
 
     # move data to GPU if available
@@ -186,19 +193,51 @@ def train_one_batch(batch, model, optimizer, opt, batch_i):
 
     #if opt.one2many_mode == 0 or opt.one2many_mode == 1:
     start_time = time.time()
+
+    if opt.use_target_encoder:  # Sample encoder representations
+        if len(source_representation_queue) < opt.source_representation_sample_size:
+            source_representation_samples_2dlist = None
+            source_representation_target_list = None
+        else:
+            source_representation_samples_2dlist = []
+            source_representation_target_list = []
+            for i in range(batch_size):
+                # N encoder representation from the queue
+                source_representation_samples_list = source_representation_queue.sample(opt.source_representation_sample_size)
+                # insert a place-holder for the ground-truth source representation to a random index
+                place_holder_idx = np.random.randint(0, opt.source_representation_sample_size+1)
+                source_representation_samples_list.insert(place_holder_idx, None)  # len=N+1
+                # insert the sample list of one batch to the 2d list
+                source_representation_samples_2dlist.append(source_representation_samples_list)
+                # store the idx of place-holder for that batch
+                source_representation_target_list.append(place_holder_idx)
+
+        """
+        if encoder_representation_samples_2dlist[0] is None and batch_i > math.ceil(
+                opt.encoder_representation_sample_size / batch_size):
+            # a return value of none indicates we don't have sufficient samples
+            # it will only occurs in the first few training steps
+            raise ValueError("encoder_representation_samples should not be none at this batch!")
+        """
+
     if not opt.one2many:
-        decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
+        decoder_dist, h_t, attention_dist, encoder_final_state, coverage, delimiter_decoder_states, delimiter_decoder_states_lens, source_classification_dist = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, sampled_source_representation_2dlist=source_representation_samples_2dlist, source_representation_target_list=source_representation_target_list)
     else:
-        decoder_dist, h_t, attention_dist, coverage = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs)
+        decoder_dist, h_t, attention_dist, encoder_final_state, coverage, delimiter_decoder_states, delimiter_decoder_states_lens, source_classification_dist = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs=num_trgs, sampled_source_representation_2dlist=source_representation_samples_2dlist, source_representation_target_list=source_representation_target_list)
     forward_time = time_since(start_time)
+
+    if opt.use_target_encoder:  # Put all the encoder final states to the queue. Need to call detach() first
+        # encoder_final_state: [batch, memory_bank_size]
+        [source_representation_queue.put(encoder_final_state[i, :].detach()) for i in range(batch_size)]
 
     start_time = time.time()
     if opt.copy_attention:  # Compute the loss using target with oov words
         loss = masked_cross_entropy(decoder_dist, trg_oov, trg_mask, trg_lens,
-                         opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss)
+                         opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss, delimiter_decoder_states, opt.orthogonal_loss, opt.lambda_orthogonal, delimiter_decoder_states_lens)
     else:  # Compute the loss using target without oov words
         loss = masked_cross_entropy(decoder_dist, trg, trg_mask, trg_lens,
-                                    opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss)
+                                    opt.coverage_attn, coverage, attention_dist, opt.lambda_coverage, opt.coverage_loss, delimiter_decoder_states, opt.orthogonal_loss, opt.lambda_orthogonal, delimiter_decoder_states_lens)
+
     loss_compute_time = time_since(start_time)
 
     #else:  # opt.one2many_mode == 2
@@ -252,6 +291,27 @@ def train_one_batch(batch, model, optimizer, opt, batch_i):
         # logging.info('clip grad (%f -> %f)' % (grad_norm_before_clipping, grad_norm_after_clipping))
 
     optimizer.step()
+
+    # Compute target encoder loss
+    if opt.use_target_encoder and source_classification_dist is not None:
+        start_time = time.time()
+        optimizer.zero_grad()
+        # convert source_representation_target_list to a LongTensor with size=[batch_size, max_num_delimiters]
+        max_num_delimiters = delimiter_decoder_states.size(2)
+        source_representation_target = torch.LongTensor(source_representation_target_list).to(trg.device)  # [batch_size]
+        # expand along the second dimension, since for the target for each delimiter states in the same batch are the same
+        source_representation_target = source_representation_target.view(-1, 1).repeat(1, max_num_delimiters)  # [batch_size, max_num_delimiters]
+        # mask for source representation classification
+        source_representation_target_mask = torch.zeros(batch_size, max_num_delimiters).to(trg.device)
+        for i in range(batch_size):
+            source_representation_target_mask[i, :delimiter_decoder_states_lens[i]].fill_(1)
+        # compute the masked loss
+        loss_te = masked_cross_entropy(source_classification_dist, source_representation_target, source_representation_target_mask)
+        loss_compute_time += time_since(start_time)
+        # back propagation on the normalized loss
+        start_time = time.time()
+        loss_te.div(normalization).backward()
+        backward_time += time_since(start_time)
 
     # construct a statistic object for the loss
     stat = LossStatistics(loss.item(), total_trg_tokens, n_batch=1, forward_time=forward_time, loss_compute_time=loss_compute_time, backward_time=backward_time)

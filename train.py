@@ -15,11 +15,15 @@ import train_rl
 from utils.time_log import time_since
 from utils.data_loader import load_data_and_vocab
 import time
+import numpy as np
+import random
 
 
 def process_opt(opt):
     if opt.seed > 0:
         torch.manual_seed(opt.seed)
+        np.random.seed(opt.seed)
+        random.seed(opt.seed)
 
     if torch.cuda.is_available() and not opt.gpuid:
         opt.gpuid = 0
@@ -177,6 +181,15 @@ if __name__ == "__main__":
 
     if opt.one2many_mode == 1 and opt.num_predictions > 1:
         raise ValueError("If you set the one2many_mode to 1, the number of predictions should also be 1.")
+
+    if not opt.one2many and opt.orthogonal_loss:
+        raise ValueError("You can only use orthogonal loss in one2many mode.")
+
+    if opt.mc_rollouts and opt.reward_shaping:
+        raise ValueError("You cannot use monte-carlo rollout when using reward shaping")
+
+    if opt.reward_shaping and opt.one2many_mode == 1:
+        raise ValueError("You cannot use reward shapping when one2many mode=1")
 
     logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=True)
     logging.info('Parameters:')

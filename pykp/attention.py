@@ -86,7 +86,7 @@ class Attention(nn.Module):
         scores = scores.view(-1, max_input_seq_len)  # [batch_size, max_input_seq_len]
         return scores
 
-    def forward(self, decoder_state, memory_bank, src_mask, coverage=None):
+    def forward(self, decoder_state, memory_bank, src_mask=None, coverage=None):
         """
         :param decoder_state: [batch_size, decoder_size]
         :param memory_bank: [batch_size, max_input_seq_len, self.num_directions * self.encoder_size]
@@ -97,6 +97,9 @@ class Attention(nn.Module):
         # init dimension info
         batch_size, max_input_seq_len, memory_bank_size = list(memory_bank.size())
         #decoder_size = decoder_state.size(1)
+
+        if src_mask is None:  # if it does not supply a source mask, create a dummy mask with all ones
+            src_mask = memory_bank.new_ones(batch_size, max_input_seq_len)
 
         """
         # project memory_bank

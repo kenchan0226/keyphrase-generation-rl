@@ -221,29 +221,55 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     # if using reward shaping, each keyphrase will have its own reward, else, only the last keyphrase will get a reward
     # In addition, we adds a regularization terms to the reward
 
-    phrase_reward = compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
-                          reward_type, topk, match_type, regularization_factor, regularization_type, entropy_array)  # np array with size: [batch_size, num_predictions]
-    cumulative_reward = phrase_reward[:, num_predictions - 1]
-    cumulative_reward_sum = cumulative_reward.sum(0)
-
-    # Subtract reward by a baseline if needed
-    if opt.baseline == 'self':
-        # use the reward of greedy decoding as baseline
-        phrase_baseline = compute_phrase_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, num_predictions, reward_shaping,
-                          reward_type, topk, match_type, regularization_factor, regularization_type, entropy_array)
-        phrase_reward = phrase_reward - phrase_baseline
-
     if reward_shaping:
+        max_num_pred_phrases = max([len(pred_str_list) for pred_str_list in pred_str_2dlist])
+
+        # compute the reward for each phrase, np array with size: [batch_size, num_predictions]
+        phrase_reward = compute_phrase_reward(pred_str_2dlist, trg_str_2dlist, batch_size, max_num_pred_phrases, reward_shaping,
+                              reward_type, topk, match_type, regularization_factor, regularization_type, entropy_array)
+        # store the sum of cumulative reward for the experiment log
+        cumulative_reward = phrase_reward[:, -1]
+        cumulative_reward_sum = cumulative_reward.sum(0)
+
+        # Subtract reward by a baseline if needed
+        if opt.baseline == 'self':
+            max_num_greedy_phrases = max([len(greedy_str_list) for greedy_str_list in greedy_str_2dlist])
+            assert max_num_pred_phrases == max_num_greedy_phrases, "if you use self-critical training with reward shaping, make sure the number of phrases sampled from the policy and that decoded by greedy are the same."
+            # use the reward of greedy decoding as baseline
+            phrase_baseline = compute_phrase_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, max_num_greedy_phrases, reward_shaping,
+                              reward_type, topk, match_type, regularization_factor, regularization_type, entropy_array)
+            phrase_reward = phrase_reward - phrase_baseline
+
+        # convert each phrase reward to its improvement in reward
         phrase_reward = shape_reward(phrase_reward)
 
-    # convert to reward received at each decoding step
-    stepwise_reward = phrase_reward_to_stepwise_reward(phrase_reward, pred_eos_idx_mask)
+        # convert to reward received at each decoding step
+        stepwise_reward = phrase_reward_to_stepwise_reward(phrase_reward, pred_eos_idx_mask)
+        q_value_estimate_array = np.cumsum(stepwise_reward[:, ::-1], axis=1)[:, ::-1].copy()
+
+    elif opt.mc_rollouts:
+        for t in range(max_pred_seq_len):
+            pass
+
+    else:  # neither using reward shaping nor monte-carlo rollout
+        # only receive reward at the end of whole sequence, np array: [batch_size]
+        cumulative_reward = compute_reward(pred_str_2dlist, trg_str_2dlist, batch_size, reward_type=reward_type, topk=topk, match_type=match_type,
+                       regularization_factor=regularization_factor, regularization_type=regularization_type, entropy=entropy_array)
+        # store the sum of cumulative reward (before baseline) for the experiment log
+        cumulative_reward_sum = cumulative_reward.sum(0)
+        # Subtract the cumulative reward by a baseline if needed
+        if opt.baseline == 'self':
+            baseline = compute_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, reward_type=reward_type, topk=topk, match_type=match_type,
+                       regularization_factor=regularization_factor, regularization_type=regularization_type, entropy=entropy_array)
+            cumulative_reward = cumulative_reward - baseline
+        # q value estimation for each time step equals to the (baselined) cumulative reward
+        q_value_estimate_array = np.tile(cumulative_reward.reshape([-1, 1]), [1, max_pred_seq_len])  # [batch, max_pred_seq_len]
 
     #shapped_baselined_reward = torch.gather(shapped_baselined_phrase_reward, dim=1, index=pred_phrase_idx_mask)
 
     # use the return as the estimation of q_value at each step
-    q_value_estimate = np.cumsum(stepwise_reward[:,::-1], axis=1)[:,::-1].copy()
-    q_value_estimate = torch.from_numpy(q_value_estimate).type(torch.FloatTensor).to(src.device)
+
+    q_value_estimate = torch.from_numpy(q_value_estimate_array).type(torch.FloatTensor).to(src.device)
     q_value_estimate.requires_grad_(True)
     q_estimate_compute_time = time_since(start_time)
 
