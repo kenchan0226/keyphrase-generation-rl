@@ -26,7 +26,7 @@ The `*.one2many.pt` files does not split the training sample.
 Command:
 `python3 preprocess.py -data_dir data/[dataset]`
 
-## Training
+## Cross-entropy Loss Training
 Command example 1 (one2one baseline):
 
 `python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml`
@@ -41,19 +41,19 @@ Command example 3 (one2many baseline, reset the hidden state after the predictio
 
 Some common options for the training script:
 ```
--data [Path prefix to the "train.one2one.pt" and "train.one2many.pt" file path from preprocess.py], e.g., -data data/kp20k/
--vocab [Path prefix to the "vocab.pt" file path from preprocess.py], e.g., -vocab data/kp20k/
--exp [Name of the experiment for logging.], e.g., kp20k
--exp_path [Path of experiment log/plot.], e.g., -exp_path exp/%s.%s, the %s will be filled by the value in -exp and timestamp
--copy_attention, a flag for training a model with copy attention, we follow the copy attention in [See et al. 2017]
--coverage_attn, a flag for training a model with coverage attention layer, we follow the coverage attention in [See et al. 2017]
--coverage_loss, a flag for training a model with coverage loss in [See et al. 2017]
--lambda_coverage [coefficient of coverage loss], a coefficient to control the importance of coverage loss, default is 1.
--train_ml, a flag for training a model using maximum likehood in a supervised learning setting.
--train_rl, a flag for training a model using reward in a reinforcement learning setting.
--one2many, a flag for training a model using one2many mode.
--one2many_mode [mode], [mode]=1: concatenated the keyphrases by <sep>; [mode]=2: reset the inital state after each keyphrases.
--delimiter_type [type], only effective in one2many mode. If [type] = 0, SEP_WORD=<sep>, if [type] = 1, SEP_WORD=<eos>. Default is 1.
+-data []: path prefix to the "train.one2one.pt" and "train.one2many.pt" file path from preprocess.py, e.g., -data data/kp20k/
+-vocab []: path prefix to the "vocab.pt" file path from preprocess.py, e.g., -vocab data/kp20k/
+-exp []: name of the experiment for logging., e.g., kp20k
+-exp_path []: path of experiment log/plot, e.g., -exp_path exp/%s.%s, the %s will be filled by the value in -exp and timestamp
+-copy_attention: a flag for training a model with copy attention, we follow the copy attention in [See et al. 2017]
+-coverage_attn: a flag for training a model with coverage attention layer, we follow the coverage attention in [See et al. 2017]
+-coverage_loss: a flag for training a model with coverage loss in [See et al. 2017]
+-lambda_coverage [1]: Coefficient of coverage loss, a coefficient to control the importance of coverage loss.
+-train_ml: a flag for training a model using maximum likehood in a supervised learning setting.
+-train_rl: a flag for training a model using reward in a reinforcement learning setting.
+-one2many: a flag for training a model using one2many mode.
+-one2many_mode [0]: 1 means concatenated the keyphrases by <sep>; 2 means follows Chen et al. 2018a; 3 means reset the hidden state whenever the decoder emits a <EOS> token.
+-delimiter_type [0]: only effective in one2many mode. If delimiter_type = 0, SEP_WORD=<sep>, if delimiter_type = 1, SEP_WORD=<eos>.
 ```
 Please read the config.py for more details about the options.
 
@@ -61,11 +61,11 @@ Please read the config.py for more details about the options.
 In this work, we add a Guassian noise vector to perturb the hidden state of GRU after generated each a keyphrase to encourage exploration.
 The followings are the options for the perturbation.
 ```
--init_perturb_std [initial std of gaussian noise vector]
--final_perturb_std [terminal std of gaussian noise vector], only effective when perturb_decay=1.
--perturb_decay [mode of decay for the std of gaussian noise, 0: no decay, 1: exponential decay, 2: stepwise decay].
--perturb_decay_factor [factor for the std decay], the effect depends on the value of -perturb_decay.
--perturb_baseline, a flag for perturb the hidden state of the baseline in policy gradient training.
+-init_perturb_std [0]: initial std of gaussian noise vector
+-final_perturb_std [0]: terminal std of gaussian noise vector, only effective when perturb_decay=1.
+-perturb_decay [0]: mode of decay for the std of gaussian noise, 0 means no decay, 1 means exponential decay, 2 means stepwise decay.
+-perturb_decay_factor [0]: factor for the std decay, the effect depends on the value of -perturb_decay.
+-perturb_baseline: a flag for perturb the hidden state of the baseline in policy gradient training.
 ```
 
 We decay the std of the Guassian noise vector using the following methods
@@ -75,8 +75,8 @@ where <img src="https://latex.codecogs.com/gif.latex?\sigma_{0}" title="\sigma_{
 
 The follwoings are the options for regularization.
 ```
--regularization_type [type], 0: no regulaization, 1: -ve percentage of repetitions, 2: entropy of policy
--regularization_factor [regularization_factor]
+-regularization_type []: 0 means no regulaization, 1 means using percentage of unique keyphrases as regularization, 2 means using entropy of policy as regularization
+-regularization_factor []: factor of regularization, regularized reward = (1-regularization_factor)*reward + regularization_factor*regularization
 ```
 We will not add the regularization to the baseline.
 
@@ -94,13 +94,13 @@ Then, run the evaluate_prediction.py to compute the evaluation metric
 
 The options for evaluate_prediction.py:
 ```
--pred_file_path [path of the file exported by predict.py]
--src_file_path [path of the source file in the dataset], e.g., data/kp20k/test_src.txt
--trg_file_path [path of the target file in the dataset], e.g., data/kp20k/test_trg.txt
--exp_path [path for experiment log, which includes all the evaluation results]
--exp [Name of the experiment for logging.], e.g., kp20k
--export_filtered_pred, a flag for exporting all the filtered keyphrases to a file
--filtered_pred_path [path of the file that store the filtered keyphrases]
+-pred_file_path []: path of the file exported by predict.py
+-src_file_path []: path of the source file in the dataset, e.g., data/kp20k/test_src.txt
+-trg_file_path []: path of the target file in the dataset, e.g., data/kp20k/test_trg.txt
+-exp_path []: path for experiment log, which includes all the evaluation results
+-exp []: name of the experiment for logging, e.g., kp20k
+-export_filtered_pred: a flag for exporting all the filtered keyphrases to a file
+-filtered_pred_path []: path of the file that store the filtered keyphrases
 ```
 
 ## TODO
@@ -117,3 +117,6 @@ Get To The Point: Summarization with Pointer-Generator Networks. ACL (1) 2017: 1
 
 Rui Meng, Sanqiang Zhao, Shuguang Han, Daqing He, Peter Brusilovsky, Yu Chi:
 Deep Keyphrase Generation. ACL (1) 2017: 582-592
+
+Hai Ye, Lu Wang:
+Semi-Supervised Learning for Neural Keyphrase Generation. EMNLP 2018a: 4142-4153

@@ -52,6 +52,8 @@ class Seq2SeqModel(nn.Module):
         self.use_target_encoder = opt.use_target_encoder
         self.target_encoder_size = opt.target_encoder_size
 
+        self.device = opt.device
+
         '''
         self.attention_mode = opt.attention_mode    # 'dot', 'general', 'concat'
         self.input_feeding = opt.input_feeding
@@ -412,12 +414,11 @@ class Seq2SeqModel(nn.Module):
         :param seq_lens: a list that store the seq len of each batch, with len=batch_size
         :return: [batch_size, hidden_size, max_seq_len]
         """
-        assert tensor_2d_list[0][0].size() == torch.Size([hidden_size])
-        device = tensor_2d_list[0][0].device
+        # assert tensor_2d_list[0][0].size() == torch.Size([hidden_size])
         max_seq_len = max(seq_lens)
         for i in range(batch_size):
             for j in range(max_seq_len - seq_lens[i]):
-                tensor_2d_list[i].append( torch.ones(hidden_size).to(device) * self.pad_idx_trg )  # [hidden_size]
+                tensor_2d_list[i].append( torch.ones(hidden_size).to(self.device) * self.pad_idx_trg )  # [hidden_size]
             tensor_2d_list[i] = torch.stack(tensor_2d_list[i], dim=1)  # [hidden_size, max_seq_len]
         tensor_3d = torch.stack(tensor_2d_list, dim=0)  # [batch_size, hidden_size, max_seq_len]
         return tensor_3d
