@@ -18,9 +18,12 @@ def check_valid_keyphrases(str_list):
             keep_flag = False
 
         for w in word_list:
-            if w == pykp.io.UNK_WORD or w == ',' or w == '.':
-                keep_flag = False
-
+            if opt.invalidate_unk:
+                if w == pykp.io.UNK_WORD or w == ',' or w == '.':
+                    keep_flag = False
+            else:
+                if w == ',' or w == '.':
+                    keep_flag = False
         is_valid[i] = keep_flag
 
     return is_valid
@@ -181,6 +184,8 @@ def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, top
     :return: {'precision@%d' % topk: precision_k, 'recall@%d' % topk: recall_k, 'f1_score@%d' % topk: f1, 'num_matches@%d': num_matches}
     """
     assert is_match.shape[0] == num_predictions
+    if topk == 'M':
+        topk = num_predictions
 
     if num_predictions > topk:
         is_match = is_match[:topk]
@@ -219,6 +224,8 @@ def compute_classification_metrics_at_ks(is_match, num_predictions, num_trgs, k_
         recall_ks = []
         f1_ks = []
         for topk in k_list:
+            if topk == 'M':
+                topk = num_predictions
             if num_predictions > topk:
                 num_matches_at_k = num_matches[topk-1]
                 num_predictions_at_k = topk
@@ -272,6 +279,8 @@ def dcg_at_k(r, k, method=1):
         Discounted cumulative gain
     """
     num_predictions = r.shape[0]
+    if k == 'M':
+        k = num_predictions
     if num_predictions == 0:
         dcg = 0.
     else:
@@ -293,7 +302,12 @@ def dcg_at_ks(r, k_list, method=1):
     if num_predictions == 0:
         dcg_array = np.array([0] * len(k_list))
     else:
-        k_max = max(k_list)
+        k_max = -1
+        for k in k_list:
+            if k == 'M':
+                k = num_predictions
+            if k > k_max:
+                k_max = k
         if num_predictions > k_max:
             r = r[:k_max]
             num_predictions = k_max
@@ -302,6 +316,8 @@ def dcg_at_ks(r, k_list, method=1):
             dcg = np.cumsum(discounted_gain)
             return_indices = []
             for k in k_list:
+                if k == 'M':
+                    k = num_predictions
                 return_indices.append((k - 1) if k <= num_predictions else (num_predictions - 1))
             return_indices = np.array(return_indices, dtype=int)
             dcg_array = dcg[return_indices]
@@ -370,6 +386,8 @@ def alpha_dcg_at_k(r_2d, k, method=1, alpha=0.5):
     else:
         # convert r_2d to gain vector
         num_trg_str, num_pred_str = r_2d.shape
+        if k == 'M':
+            k = num_pred_str
         if num_pred_str > k:
             num_pred_str = k
         gain_vector = np.zeros(num_pred_str)
@@ -393,7 +411,13 @@ def alpha_dcg_at_ks(r_2d, k_list, method=1, alpha=0.5):
         return [0.0] * len(k_list)
     # convert r_2d to gain vector
     num_trg_str, num_pred_str = r_2d.shape
-    k_max = max(k_list)
+    # k_max = max(k_list)
+    k_max = -1
+    for k in k_list:
+        if k == 'M':
+            k = num_pred_str
+        if k > k_max:
+            k_max = k
     if num_pred_str > k_max:
         num_pred_str = k_max
     gain_vector = np.zeros(num_pred_str)
@@ -416,6 +440,9 @@ def alpha_ndcg_at_k(r_2d, k, method=1, alpha=0.5, include_dcg=False):
         alpha_ndcg = 0.0
         alpha_dcg = 0.0
     else:
+        num_trg_str, num_pred_str = r_2d.shape
+        if k == 'M':
+            k = num_pred_str
         # convert r to gain vector
         alpha_dcg = alpha_dcg_at_k(r_2d, k, method, alpha)
         # compute alpha_dcg_max
@@ -444,7 +471,14 @@ def alpha_ndcg_at_ks(r_2d, k_list, method=1, alpha=0.5, include_dcg=False):
         alpha_ndcg_array = [0] * len(k_list)
         alpha_dcg_array = [0] * len(k_list)
     else:
-        k_max = max(k_list)
+        # k_max = max(k_list)
+        num_trg_str, num_pred_str = r_2d.shape
+        k_max = -1
+        for k in k_list:
+            if k == 'M':
+                k = num_pred_str
+            if k > k_max:
+                k_max = k
         # convert r to gain vector
         alpha_dcg_array = alpha_dcg_at_ks(r_2d, k_list, method, alpha)
         # compute alpha_dcg_max
@@ -496,6 +530,8 @@ def average_precision(r, num_predictions, num_trgs):
 
 
 def average_precision_at_k(r, k, num_predictions, num_trgs):
+    if k == 'M':
+        k = num_predictions
     if k < num_predictions:
         num_predictions = k
         r = r[:k]
@@ -505,7 +541,13 @@ def average_precision_at_k(r, k, num_predictions, num_trgs):
 def average_precision_at_ks(r, k_list, num_predictions, num_trgs):
     if num_predictions == 0 or num_trgs == 0:
         return [0] * len(k_list)
-    k_max = max(k_list)
+    # k_max = max(k_list)
+    k_max = -1
+    for k in k_list:
+        if k == 'M':
+            k = num_predictions
+        if k > k_max:
+            k_max = k
     if num_predictions > k_max:
         num_predictions = k_max
         r = r[:num_predictions]
@@ -515,6 +557,8 @@ def average_precision_at_ks(r, k_list, num_predictions, num_trgs):
     average_precision_array = precision_cum_sum / num_trgs
     return_indices = []
     for k in k_list:
+        if k == 'M':
+            k = num_predictions
         return_indices.append( (k-1) if k <= num_predictions else (num_predictions-1) )
     return_indices = np.array(return_indices, dtype=int)
     return average_precision_array[return_indices]
@@ -530,7 +574,7 @@ def main(opt):
 
     # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
     score_dict = defaultdict(list)
-    topk_dict = {'present': [5, 10, 15], 'absent': [5, 10, 15, 50], 'all': [5, 10, 15]}
+    topk_dict = {'present': [5, 10, 'M'], 'absent': [5, 10, 50, 'M'], 'all': [5, 10, 'M']}
     num_src = 0
     num_unique_predictions = 0
     num_unique_present_predictions = 0
@@ -600,24 +644,26 @@ def main(opt):
         precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks = \
             compute_classification_metrics_at_ks(is_match_all, num_filtered_predictions_all, num_filtered_targets_all, k_list=topk_dict['all'])
 
-        ndcg_ks, dcg_ks = ndcg_at_ks(is_match_all, k_list=topk_dict['all'], method=1, include_dcg=True)
-        alpha_ndcg_ks, alpha_dcg_ks = alpha_ndcg_at_ks(is_match_substring_2d_all, k_list=topk_dict['all'], method=1, alpha=0.5, include_dcg=True)
-
-        ap_ks = average_precision_at_ks(is_match_all, k_list=topk_dict['all'], num_predictions=num_filtered_predictions_all, num_trgs=num_filtered_targets_all)
+        if not opt.disable_ranking_metrics:
+            ndcg_ks, dcg_ks = ndcg_at_ks(is_match_all, k_list=topk_dict['all'], method=1, include_dcg=True)
+            alpha_ndcg_ks, alpha_dcg_ks = alpha_ndcg_at_ks(is_match_substring_2d_all, k_list=topk_dict['all'], method=1, alpha=0.5, include_dcg=True)
+            ap_ks = average_precision_at_ks(is_match_all, k_list=topk_dict['all'], num_predictions=num_filtered_predictions_all, num_trgs=num_filtered_targets_all)
 
         for topk, precision_k, recall_k, f1_k, num_matches_k, num_predictions_k, ndcg_k, dcg_k, alpha_ndcg_k, alpha_dcg_k, ap_k in \
                 zip(topk_dict['all'], precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks, ndcg_ks, dcg_ks, alpha_ndcg_ks, alpha_dcg_ks, ap_ks):
-            score_dict['precision@%d_all' % (topk)].append(precision_k)
-            score_dict['recall@%d_all' % (topk)].append(recall_k)
-            score_dict['f1_score@%d_all' % (topk)].append(f1_k)
-            score_dict['num_matches@%d_all' % (topk)].append(num_matches_k)
-            score_dict['num_predictions@%d_all' % (topk)].append(num_predictions_k)
-            score_dict['num_targets@%d_all' % (topk)].append(num_filtered_targets_all)
-            score_dict['DCG@%d_all' % (topk)].append(dcg_k)
-            score_dict['NDCG@%d_all' % (topk)].append(ndcg_k)
-            score_dict['AlphaDCG@%d_all' % (topk)].append(alpha_dcg_k)
-            score_dict['AlphaNDCG@%d_all' % (topk)].append(alpha_ndcg_k)
-            score_dict['AP@%d_all' % (topk)].append(ap_k)
+            score_dict['precision@{}_all'.format(topk)].append(precision_k)
+            score_dict['recall@{}_all'.format(topk)].append(recall_k)
+            score_dict['f1_score@{}_all'.format(topk)].append(f1_k)
+            score_dict['num_matches@{}_all'.format(topk)].append(num_matches_k)
+            score_dict['num_predictions@{}_all'.format(topk)].append(num_predictions_k)
+            score_dict['num_targets@{}_all'.format(topk)].append(num_filtered_targets_all)
+            if not opt.disable_ranking_metrics:
+                score_dict['AP@{}_all'.format(topk)].append(ap_k)
+                #score_dict['DCG@{}_all'.format(topk)].append(dcg_k)
+                score_dict['NDCG@{}_all'.format(topk)].append(ndcg_k)
+                #score_dict['AlphaDCG@{}_all'.format(topk)].append(alpha_dcg_k)
+                score_dict['AlphaNDCG@{}_all'.format(topk)].append(alpha_ndcg_k)
+
 
         # Filter for present keyphrase prediction
         trg_str_filter_present = tmp_trg_str_filter * trg_str_is_present
@@ -681,27 +727,29 @@ def main(opt):
                 compute_classification_metrics_at_ks(is_match, num_filtered_predictions,
                                                     num_filtered_targets, k_list=topk_dict[present_tag])
 
-            ndcg_ks, dcg_ks = ndcg_at_ks(is_match, k_list=topk_dict[present_tag], method=1, include_dcg=True)
-            alpha_ndcg_ks, alpha_dcg_ks = alpha_ndcg_at_ks(is_match_substring_2d, k_list=topk_dict[present_tag], method=1,
-                                                           alpha=0.5, include_dcg=True)
-            ap_ks = average_precision_at_ks(is_match, k_list=topk_dict[present_tag],
-                                            num_predictions=num_filtered_predictions,
-                                            num_trgs=num_filtered_targets)
+            if not opt.disable_ranking_metrics:
+                ndcg_ks, dcg_ks = ndcg_at_ks(is_match, k_list=topk_dict[present_tag], method=1, include_dcg=True)
+                alpha_ndcg_ks, alpha_dcg_ks = alpha_ndcg_at_ks(is_match_substring_2d, k_list=topk_dict[present_tag], method=1,
+                                                               alpha=0.5, include_dcg=True)
+                ap_ks = average_precision_at_ks(is_match, k_list=topk_dict[present_tag],
+                                                num_predictions=num_filtered_predictions,
+                                                num_trgs=num_filtered_targets)
 
             for topk, precision_k, recall_k, f1_k, num_matches_k, num_predictions_k, ndcg_k, dcg_k, alpha_ndcg_k, alpha_dcg_k, ap_k in \
                     zip(topk_dict[present_tag], precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks, ndcg_ks, dcg_ks, alpha_ndcg_ks, alpha_dcg_ks, ap_ks):
-                score_dict['precision@%d_%s' % (topk, present_tag)].append(precision_k)
-                score_dict['recall@%d_%s' % (topk, present_tag)].append(recall_k)
-                score_dict['f1_score@%d_%s' % (topk, present_tag)].append(f1_k)
-                score_dict['num_matches@%d_%s' % (topk, present_tag)].append(num_matches_k)
-                score_dict['num_predictions@%d_%s' % (topk, present_tag)].append(num_predictions_k)
-                score_dict['num_targets@%d_%s' % (topk, present_tag)].append(num_filtered_targets)
+                score_dict['precision@{}_{}'.format(topk, present_tag)].append(precision_k)
+                score_dict['recall@{}_{}'.format(topk, present_tag)].append(recall_k)
+                score_dict['f1_score@{}_{}'.format(topk, present_tag)].append(f1_k)
+                score_dict['num_matches@{}_{}'.format(topk, present_tag)].append(num_matches_k)
+                score_dict['num_predictions@{}_{}'.format(topk, present_tag)].append(num_predictions_k)
+                score_dict['num_targets@{}_{}'.format(topk, present_tag)].append(num_filtered_targets)
+                if not opt.disable_ranking_metrics:
+                    score_dict['AP@{}_{}'.format(topk, present_tag)].append(ap_k)
+                    #score_dict['DCG@{}_{}'.format(topk, present_tag)].append(dcg_k)
+                    score_dict['NDCG@{}_{}'.format(topk, present_tag)].append(ndcg_k)
+                    #score_dict['AlphaDCG@{}_{}'.format(topk, present_tag)].append(alpha_dcg_k)
+                    score_dict['AlphaNDCG@{}_{}'.format(topk, present_tag)].append(alpha_ndcg_k)
 
-                score_dict['DCG@%d_%s' % (topk, present_tag)].append(dcg_k)
-                score_dict['NDCG@%d_%s' % (topk, present_tag)].append(ndcg_k)
-                score_dict['AlphaDCG@%d_%s' % (topk, present_tag)].append(alpha_dcg_k)
-                score_dict['AlphaNDCG@%d_%s' % (topk, present_tag)].append(alpha_ndcg_k)
-                score_dict['AP@%d_%s' % (topk, present_tag)].append(ap_k)
 
         if opt.export_filtered_pred:
             pred_print_out = ''
@@ -722,9 +770,9 @@ def main(opt):
 
         if opt.debug:
             if num_src >= 43:
-                marco_avg_recall_10_absent = float(sum(score_dict['recall@10_absent'])) / float(len(score_dict['recall@10_absent']))
+                macro_avg_recall_10_absent = float(sum(score_dict['recall@10_absent'])) / float(len(score_dict['recall@10_absent']))
                 micro_avg_recall_10_absent = float(sum(score_dict['num_matches@10_absent'])) / float(sum(score_dict['num_targets@10_absent']))
-                print("marco avg. recall@10: %.5f" % marco_avg_recall_10_absent)
+                print("macro avg. recall@10: %.5f" % macro_avg_recall_10_absent)
                 print("micro avg. recall@10: %.5f" % micro_avg_recall_10_absent)
                 print(".")
                 break
@@ -762,15 +810,17 @@ def main(opt):
         result_txt_str += "#unique predictions: %d/%d\t#unique targets:%d/%d\n" % \
                              (num_unique_filtered_predictions, total_num_unique_filtered_predictions, num_unique_filtered_targets, total_num_unique_filtered_targets)
         classification_output_str, classification_field_list, classification_result_list = report_classification_scores(score_dict, topk_dict[present_tag], present_tag)
-        ranking_output_str, ranking_field_list, ranking_result_list = report_ranking_scores(score_dict, topk_dict[present_tag], present_tag)
         result_txt_str += classification_output_str
-        result_txt_str += ranking_output_str
         field_list += classification_field_list
-        field_list += ranking_field_list
-        field_list_ranking += ranking_field_list
         result_list += classification_result_list
-        result_list += ranking_result_list
-        result_list_ranking += ranking_result_list
+
+        if not opt.disable_ranking_metrics:
+            ranking_output_str, ranking_field_list, ranking_result_list = report_ranking_scores(score_dict, topk_dict[present_tag], present_tag)
+            result_txt_str += ranking_output_str
+            field_list += ranking_field_list
+            result_list += ranking_result_list
+            # field_list_ranking += ranking_field_list
+            #result_list_ranking += ranking_result_list
 
     results_txt_file = open(os.path.join(opt.exp_path, "results_log.txt"), "w")
     results_txt_file.write(result_txt_str)
@@ -781,10 +831,12 @@ def main(opt):
     results_tsv_file.write('\t'.join('%.5f' % result for result in result_list) + '\n')
     results_tsv_file.close()
 
+    '''
     results_tsv_file = open(os.path.join(opt.exp_path, "results_log_ranking.tsv"), "w")
     results_tsv_file.write('\t'.join(field_list_ranking) + '\n')
     results_tsv_file.write('\t'.join('%.5f' % result for result in result_list_ranking) + '\n')
     results_tsv_file.close()
+    '''
     return
 
 
@@ -793,25 +845,25 @@ def report_classification_scores(score_dict, topk_list, present_tag):
     result_list = []
     field_list = []
     for topk in topk_list:
-        total_predictions_k = sum(score_dict['num_predictions@%d_%s' % (topk, present_tag)])
-        total_targets_k = sum(score_dict['num_targets@%d_%s' % (topk, present_tag)])
-        total_num_matches_k = sum(score_dict['num_matches@%d_%s' % (topk, present_tag)])
+        total_predictions_k = sum(score_dict['num_predictions@{}_{}'.format(topk, present_tag)])
+        total_targets_k = sum(score_dict['num_targets@{}_{}'.format(topk, present_tag)])
+        total_num_matches_k = sum(score_dict['num_matches@{}_{}'.format(topk, present_tag)])
         # Compute the micro averaged recall, precision and F-1 score
         micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k = compute_classification_metrics(
             total_num_matches_k, total_predictions_k, total_targets_k)
         # Compute the macro averaged recall, precision and F-1 score
-        macro_avg_precision_k = sum(score_dict['precision@%d_%s' % (topk, present_tag)]) / len(
-            score_dict['precision@%d_%s' % (topk, present_tag)])
-        marco_avg_recall_k = sum(score_dict['recall@%d_%s' % (topk, present_tag)]) / len(
-            score_dict['recall@%d_%s' % (topk, present_tag)])
-        marco_avg_f1_score_k = float(2 * macro_avg_precision_k * marco_avg_recall_k) / (
-                macro_avg_precision_k + marco_avg_recall_k)
-        output_str += ("Begin===============classification metrics %s@%d===============Begin\n" % (present_tag, topk))
-        output_str += ("#target: %d, #predictions: %d, #corrects: %d\n" % (total_predictions_k, total_targets_k, total_num_matches_k))
-        output_str += "Micro:\tP@%d=%.5f\tR@%d=%.5f\tF1@%d=%.5f\n" % (topk, micro_avg_precision_k, topk, micro_avg_recall_k, topk, micro_avg_f1_score_k)
-        output_str += "Macro:\tP@%d=%.5f\tR@%d=%.5f\tF1@%d=%.5f\n" % (topk, macro_avg_precision_k, topk, marco_avg_recall_k, topk, marco_avg_f1_score_k)
-        field_list += ['micro_avg_p@%d_%s' % (topk, present_tag), 'micro_avg_r@%d_%s' % (topk, present_tag), 'micro_avg_f1@%d_%s' % (topk, present_tag)]
-        result_list += [micro_avg_precision_k, micro_avg_recall_k, micro_avg_f1_score_k]
+        macro_avg_precision_k = sum(score_dict['precision@{}_{}'.format(topk, present_tag)]) / len(
+            score_dict['precision@{}_{}'.format(topk, present_tag)])
+        macro_avg_recall_k = sum(score_dict['recall@{}_{}'.format(topk, present_tag)]) / len(
+            score_dict['recall@{}_{}'.format(topk, present_tag)])
+        macro_avg_f1_score_k = float(2 * macro_avg_precision_k * macro_avg_recall_k) / (
+                macro_avg_precision_k + macro_avg_recall_k)
+        output_str += ("Begin===============classification metrics {}@{}===============Begin\n".format(present_tag, topk))
+        output_str += ("#target: {}, #predictions: {}, #corrects: {}\n".format(total_predictions_k, total_targets_k, total_num_matches_k))
+        output_str += "Micro:\tP@{}={:.5}\tR@{}={:.5}\tF1@{}={:.5}\n".format(topk, micro_avg_precision_k, topk, micro_avg_recall_k, topk, micro_avg_f1_score_k)
+        output_str += "Macro:\tP@{}={:.5}\tR@{}={:.5}\tF1@{}={:.5}\n".format(topk, macro_avg_precision_k, topk, macro_avg_recall_k, topk, macro_avg_f1_score_k)
+        field_list += ['macro_avg_p@{}_{}'.format(topk, present_tag), 'macro_avg_r@{}_{}'.format(topk, present_tag), 'macro_avg_f1@{}_{}'.format(topk, present_tag)]
+        result_list += [macro_avg_precision_k, macro_avg_recall_k, macro_avg_f1_score_k]
     return output_str, field_list, result_list
 
 
@@ -820,22 +872,26 @@ def report_ranking_scores(score_dict, topk_list, present_tag):
     result_list = []
     field_list = []
     for topk in topk_list:
-        avg_dcg_k = sum(score_dict['DCG@%d_%s' % (topk, present_tag)]) / len(
-            score_dict['DCG@%d_%s' % (topk, present_tag)])
-        avg_ndcg_k = sum(score_dict['NDCG@%d_%s' % (topk, present_tag)]) / len(
-            score_dict['NDCG@%d_%s' % (topk, present_tag)])
-        avg_alpha_dcg_k = sum(score_dict['AlphaDCG@%d_%s' % (topk, present_tag)]) / len(
-            score_dict['AlphaDCG@%d_%s' % (topk, present_tag)])
-        avg_alpha_ndcg_k = sum(score_dict['AlphaNDCG@%d_%s' % (topk, present_tag)]) / len(
-            score_dict['AlphaNDCG@%d_%s' % (topk, present_tag)])
-        map_k = sum(score_dict['AP@%d_%s' % (topk, present_tag)]) / len(
-            score_dict['AP@%d_%s' % (topk, present_tag)])
-        output_str += ("Begin==================Ranking metrics %s@%d==================Begin\n" % (present_tag, topk))
-        output_str += "Relevance:\tDCG@%d=%.5f\tNDCG@%d=%.5f\tMAP@%d=%.5f\n" % (topk, avg_dcg_k, topk, avg_ndcg_k, topk, map_k)
-        output_str += "Diversity:\tAlphaDCG@%d=%.5f\tAlphaNDCG@%d=%.5f\n" % (topk, avg_alpha_dcg_k, topk, avg_alpha_ndcg_k)
-        field_list += ['avg_DCG@%d_%s' % (topk, present_tag), 'avg_NDCG@%d_%s' % (topk, present_tag),
-                       'MAP@%d_%s' % (topk, present_tag), 'AlphaDCG@%d_%s' % (topk, present_tag), 'AlphaNDCG@%d_%s' % (topk, present_tag)]
-        result_list += [avg_dcg_k, avg_ndcg_k, map_k, avg_alpha_dcg_k, avg_alpha_ndcg_k]
+        map_k = sum(score_dict['AP@{}_{}'.format(topk, present_tag)]) / len(
+            score_dict['AP@{}_{}'.format(topk, present_tag)])
+        #avg_dcg_k = sum(score_dict['DCG@{}_{}'.format(topk, present_tag)]) / len(
+        #    score_dict['DCG@{}_{}'.format(topk, present_tag)])
+        avg_ndcg_k = sum(score_dict['NDCG@{}_{}'.format(topk, present_tag)]) / len(
+            score_dict['NDCG@{}_{}'.format(topk, present_tag)])
+        #avg_alpha_dcg_k = sum(score_dict['AlphaDCG@{}_{}'.format(topk, present_tag)]) / len(
+        #    score_dict['AlphaDCG@{}_{}'.format(topk, present_tag)])
+        avg_alpha_ndcg_k = sum(score_dict['AlphaNDCG@{}_{}'.format(topk, present_tag)]) / len(
+            score_dict['AlphaNDCG@{}_{}'.format(topk, present_tag)])
+        output_str += ("Begin==================Ranking metrics {}@{}==================Begin\n".format(present_tag, topk))
+        #output_str += "Relevance:\tDCG@{}={:.5}\tNDCG@{}={:.5}\tMAP@{}={:.5}\n".format(topk, avg_dcg_k, topk, avg_ndcg_k, topk, map_k)
+        #output_str += "Diversity:\tAlphaDCG@{}={:.5}\tAlphaNDCG@{}={:.5}\n".format(topk, avg_alpha_dcg_k, topk, avg_alpha_ndcg_k)
+        #field_list += ['avg_DCG@{}_{}'.format(topk, present_tag), 'avg_NDCG@{}_{}'.format(topk, present_tag),
+        #               'MAP@{}_{}'.format(topk, present_tag), 'AlphaDCG@{}_{}'.format(topk, present_tag), 'AlphaNDCG@{}_{}'.format(topk, present_tag)]
+        #result_list += [avg_dcg_k, avg_ndcg_k, map_k, avg_alpha_dcg_k, avg_alpha_ndcg_k]
+        output_str += "\tMAP@{}={:.5}\tNDCG@{}={:.5}\tAlphaNDCG@{}={:.5}".format(topk, map_k, topk, avg_ndcg_k, topk, avg_alpha_ndcg_k)
+        field_list += ['MAP@{}_{}'.format(topk, present_tag), 'avg_NDCG@{}_{}'.format(topk, present_tag), 'AlphaNDCG@{}_{}'.format(topk, present_tag)]
+        result_list += [map_k, avg_ndcg_k, avg_alpha_ndcg_k]
+
     return output_str, field_list, result_list
 
 

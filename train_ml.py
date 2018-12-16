@@ -313,6 +313,11 @@ def train_one_batch(batch, model, optimizer, opt, batch_i, source_representation
         loss_te.div(normalization).backward()
         backward_time += time_since(start_time)
 
+        if opt.max_grad_norm > 0:
+            grad_norm_before_clipping = nn.utils.clip_grad_norm_(model.parameters(), opt.max_grad_norm)
+
+        optimizer.step()
+
     # construct a statistic object for the loss
     stat = LossStatistics(loss.item(), total_trg_tokens, n_batch=1, forward_time=forward_time, loss_compute_time=loss_compute_time, backward_time=backward_time)
 
