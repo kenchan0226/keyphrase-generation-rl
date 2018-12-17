@@ -120,6 +120,10 @@ class SequenceGenerator(object):
         src_oov = src_oov.repeat(self.beam_size, 1)  # [batch * beam_size, src_seq_len]
         decoder_state = decoder_init_state.repeat(1, self.beam_size, 1)  # [dec_layers, batch_size * beam_size, decoder_size]
 
+        if self.model.use_target_encoder:
+            # init the hidden state of target encoder to zero vector
+            target_encoder_state = decoder_state.new_zeros(1, batch_size * self.beam_size, self.model.target_encoder_size)  # [1, batch_size * beam_size, target_encoder_size]
+
         # exclusion_list = ["<t>", "</t>", "."]
         exclusion_tokens = set([word2idx[t]
                                 for t in self.ignore_when_blocking])
@@ -157,10 +161,18 @@ class SequenceGenerator(object):
             # Convert the generated eos token to bos token, only useful in one2many_mode=2 or one2many_mode=3
             decoder_input = decoder_input.masked_fill(decoder_input == self.eos_idx, self.bos_idx)
 
+            if self.model.use_target_encoder:
+                # encode the previous token using target encoder
+                target_encoder_state_next = self.model.target_encoder(decoder_input.detach(), target_encoder_state)
+                target_encoder_state = target_encoder_state_next  # [1, batch_size * beam_size, target_encoder_size]
+            else:
+                target_encoder_state = None
+                # decoder_input = y_t
+
             # run one step of decoding
             # [flattened_batch, vocab_size], [dec_layers, flattened_batch, decoder_size], [flattened_batch, memory_bank_size], [flattened_batch, src_len], [flattened_batch, src_len]
             decoder_dist, decoder_state, context, attn_dist, _, coverage = \
-                self.model.decoder(decoder_input, decoder_state, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank)
+                self.model.decoder(decoder_input, decoder_state, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank, target_encoder_state)
             log_decoder_dist = torch.log(decoder_dist + EPS)
 
             if self.review_attn:
@@ -335,6 +347,10 @@ class SequenceGenerator(object):
         # Init decoder state
         h_t_init = self.model.init_decoder_state(encoder_final_state)  # [dec_layers, batch_size, decoder_size]
 
+        if self.model.use_target_encoder:
+            # init the hidden state of target encoder to zero vector
+            h_t_te = h_t_init.new_zeros(1, batch_size, self.model.target_encoder_size)  # [1, batch_size, target_encoder_size]
+
         if self.coverage_attn:
             coverage = torch.zeros_like(src, dtype=torch.float)  # [batch, max_src_seq]
         else:
@@ -427,9 +443,16 @@ class SequenceGenerator(object):
                 y_t = y_t.masked_fill(
                     y_t.gt(self.model.vocab_size - 1), self.model.unk_idx)
 
+            if self.model.use_target_encoder:
+                # encode the previous token using target encoder
+                h_t_te_next = self.model.target_encoder(y_t.detach(), h_t_te)
+                h_t_te = h_t_te_next  # [1, batch_size * beam_size, target_encoder_size]
+            else:
+                h_t_te = None
+
             # [batch, vocab_size], [dec_layers, batch, decoder_size], [batch, memory_bank_size], [batch, src_len], [batch, src_len]
             decoder_dist, h_t_next, context, attn_dist, _, coverage = \
-                self.model.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank)
+                self.model.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank, h_t_te)
 
             log_decoder_dist = torch.log(decoder_dist + EPS)  # [batch, vocab_size]
 
