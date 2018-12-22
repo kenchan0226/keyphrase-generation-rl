@@ -80,7 +80,7 @@ The follwoings are the options for regularization.
 ```
 We will not add the regularization to the baseline.
 
-## Testing
+## Testing for kp20k dataset
 Examples of testing commands:
 
 First, run the predict.py to output all the predicted keyphrases to a text file.
@@ -102,6 +102,12 @@ The options for evaluate_prediction.py:
 -export_filtered_pred: a flag for exporting all the filtered keyphrases to a file
 -filtered_pred_path []: path of the file that store the filtered keyphrases
 ```
+
+## Testing for cross-domain dataset
+First, run the interactive_predict.py to output all the predicted keyphrases to a text file.
+
+`python3 interactive_predict.py -vocab data/kp20k_filtered/ -src_file data/cross_domain/[src_file.txt] -trg_file data/cross_domain/[trg_file.txt] -pred_path pred/%s.%s -enc_layers 2 -copy_attention -one2many -one2many_mode 1 -delimiter 0 -model model/kp20k.rl.copy.bi-directional.20181216-174101/kp20k.rl.copy.bi-directional.epoch=9.batch=13728.total_batch=140000.model -max_length 60 -remove_title_eos -beam_size 50 -batch_size 8 -replace_unk`
+
 
 ## TODO
 - [x] Beam Search
