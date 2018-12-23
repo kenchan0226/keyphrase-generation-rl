@@ -107,15 +107,18 @@ The options for evaluate_prediction.py:
 ## Testing for cross-domain dataset
 First, run the interactive_predict.py to output all the predicted keyphrases to a text file.
 
-`python3 interactive_predict.py -vocab data/kp20k_filtered/ -src_file data/cross_domain/[src_file.txt] -trg_file data/cross_domain/[trg_file.txt] -pred_path pred/%s.%s -enc_layers 2 -copy_attention -one2many -one2many_mode 1 -delimiter 0 -model model/kp20k.rl.copy.bi-directional.20181216-174101/kp20k.rl.copy.bi-directional.epoch=9.batch=13728.total_batch=140000.model -max_length 60 -remove_title_eos -beam_size 50 -batch_size 8 -replace_unk`
+Example 1:
+`python3 interactive_predict.py -vocab data/kp20k_filtered/ -src_file data/cross_domain/[src_file.txt] -pred_path pred/%s.%s -enc_layers 2 -copy_attention -one2many -one2many_mode 1 -delimiter 0 -model model/kp20k.rl.copy.bi-directional.20181216-174101/kp20k.rl.copy.bi-directional.epoch=9.batch=13728.total_batch=140000.model -max_length 60 -remove_title_eos -beam_size 50 -batch_size 8 -replace_unk`
+
+Example 2:
+`python3 interactive_predict.py -vocab data/kp20k_filtered/ -src_file data/cross_domain/[src_file.txt] -pred_path pred/%s.%s -enc_layers 2 -copy_attention -model model/kp20k.ml.copy.bi-directional.20181022-151326/kp20k.ml.copy.bi-directional.epoch=3.batch=35250.total_batch=112000.model -max_length 6 -remove_title_eos -beam_size 100 -batch_size 6 -replace_unk -n_best 100`
+
 The options for interactive_predict.py:
 ```
 -vocab []: path prefix to the "vocab.pt" file path from preprocess.py, e.g., -vocab data/kp20k_filtered/
--src_file []: path of the source file in the dataset, e.g., data/kp20k_filtered/test_src.txt
--trg_file []: path of the target file in the dataset, e.g., data/kp20k_filtered/test_trg.txt
+-src_file []: path of the source file in the dataset, e.g., -src_file data/cross_domain/word_krapivin_testing_context.txt
 -pred_path []: path of the prediction file, e.g., -pred_path pred/%s.%s, the %s will be filled by the value in -exp and timestamp
--export_filtered_pred: a flag for exporting all the filtered keyphrases to a file
--filtered_pred_path []: path of the file that store the filtered keyphrases
+-replace_unk: a flag for replacing every <unk> token with the token that received the highest attention score.
 ```
 
 ## TODO

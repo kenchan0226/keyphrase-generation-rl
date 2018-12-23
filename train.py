@@ -34,14 +34,26 @@ def process_opt(opt):
     if hasattr(opt, 'train_rl') and opt.train_rl:
         opt.exp += '.rl'
 
-    #if hasattr(opt, 'one2many') and opt.one2many:
-    #    opt.exp += '.one2many'
+    if opt.one2many:
+        opt.exp += '.one2many'
 
-    if hasattr(opt, 'copy_attention') and opt.copy_attention:
+    if opt.one2many_mode == 1:
+        opt.exp += '.cat'
+
+    if opt.copy_attention:
         opt.exp += '.copy'
 
-    if hasattr(opt, 'coverage_attn') and opt.coverage_attn:
+    if opt.coverage_attn:
         opt.exp += '.coverage'
+
+    if opt.review_attn:
+        opt.exp += '.review'
+
+    if opt.orthogonal_loss:
+        opt.exp += '.orthogonal'
+
+    if opt.use_target_encoder:
+        opt.exp += '.target_encode'
 
     if hasattr(opt, 'bidirectional') and opt.bidirectional:
         opt.exp += '.bi-directional'
