@@ -24,15 +24,29 @@ def process_opt(opt):
         print("CUDA is not available, fall back to CPU.")
 
     opt.exp = 'predict.' + opt.exp
-    if hasattr(opt, 'copy_attention') and opt.copy_attention:
+    if opt.one2many:
+        opt.exp += '.one2many'
+
+    if opt.one2many_mode == 1:
+        opt.exp += '.cat'
+
+    if opt.copy_attention:
         opt.exp += '.copy'
 
-    if hasattr(opt, 'coverage_attn') and opt.coverage_attn:
+    if opt.coverage_attn:
         opt.exp += '.coverage'
 
-    if hasattr(opt, 'bidirectional'):
-        if opt.bidirectional:
-            opt.exp += '.bi-directional'
+    if opt.review_attn:
+        opt.exp += '.review'
+
+    if opt.orthogonal_loss:
+        opt.exp += '.orthogonal'
+
+    if opt.use_target_encoder:
+        opt.exp += '.target_encode'
+
+    if hasattr(opt, 'bidirectional') and opt.bidirectional:
+        opt.exp += '.bi-directional'
     else:
         opt.exp += '.uni-directional'
 
