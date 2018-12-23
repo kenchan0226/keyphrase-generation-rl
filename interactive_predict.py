@@ -2,9 +2,9 @@ import torch
 from sequence_generator import SequenceGenerator
 import config
 import argparse
-from preprocess import read_src_and_trg_files
+from preprocess import read_tokenized_src_file
 from utils.data_loader import load_vocab
-from pykp.io import build_dataset, KeyphraseDataset
+from pykp.io import build_interactive_predict_dataset, KeyphraseDataset
 from torch.utils.data import DataLoader
 import predict
 import os
@@ -60,10 +60,13 @@ def main(opt):
     # load data
     # read tokenized text file and convert them to 2d list of words
     src_file = opt.src_file
-    trg_file = opt.trg_file
-    tokenized_train_pairs = read_src_and_trg_files(src_file, trg_file, is_train=False, remove_eos=opt.remove_title_eos)  # 2d list of word
+    #trg_file = opt.trg_file
+    #tokenized_train_pairs = read_src_and_trg_files(src_file, trg_file, is_train=False, remove_eos=opt.remove_title_eos)  # 2d list of word
+    tokenized_src = read_tokenized_src_file(src_file, remove_eos=opt.remove_title_eos)
     # convert the 2d list of words to a list of dictionary, with keys 'src', 'src_oov', 'trg', 'trg_copy', 'src_str', 'trg_str', 'oov_dict', 'oov_list'
-    test_one2many = build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode="one2many", include_original=True)
+    # since we don't need the targets during testing, 'trg' and 'trg_copy' are some dummy variables
+    #test_one2many = build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode="one2many", include_original=True)
+    test_one2many = build_interactive_predict_dataset(tokenized_src, word2idx, idx2word, opt)
     # build the data loader
     test_one2many_dataset = KeyphraseDataset(test_one2many, word2idx=word2idx, idx2word=idx2word,
                                              type='one2many', delimiter_type=opt.delimiter_type, load_train=False, remove_src_eos=opt.remove_src_eos)

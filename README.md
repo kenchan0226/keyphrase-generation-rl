@@ -9,13 +9,14 @@ Our implementation is built on the source code from [seq2seq-keyphrase-pytorch](
 For a new dataset, you should create a new directory and place it in the `./data` directory.
 The directory should contains three pairs of source-target files, `train_src.txt, train_trg.txt, valid_src.txt, valid_trg.txt, test_src.txt`.
 The `./data` directory contains the `kp20k_small` folder, it only contains a small dataset for debugging.
-For the full kp20k dataset, please download from here [here](https://www.dropbox.com/s/b5zudclq0pfjdor/kp20k.zip?dl=0). Thanks to Mr. Wang Chen for his help on data preprocessing.
+For the full kp20k dataset, please download from here [here](https://www.dropbox.com/s/b5zudclq0pfjdor/kp20k.zip?dl=0), which is a tokenized version of the data provided by [Rui Meng](https://github.com/memray/seq2seq-keyphrase). We also removed the duplicated documents in the training set according to their instructions.
+Thanks to Mr. Wang Chen for his help on data preprocessing.
 
 ### Formats
 * All the text should be tokenized and all the tokens should be separated by a space character.
 * All digits should be replaced by a `<digit>` tokens.
 * In source files, the title and the main body are separated by an `<eos>` token
-* in target files, the keyphrases are separated by an `;` character
+* in target files, the keyphrases are separated by an `;` character. There is no space before and after the colon character, e.g., `keyphrase one;keyphrase two`.
 
 ## Numericalize Data
 The `preprocess.py` script numericalizes the three pairs of source-target files, and produce the following files
@@ -29,20 +30,20 @@ Command:
 ## Cross-entropy Loss Training
 Command example 1 (one2one baseline):
 
-`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml`
+`python3 train.py -data data/kp20k_filtered/ -vocab data/kp20k_filtered/ -exp_path exp/%s.%s -exp kp20k_filtered -copy_attention -train_ml`
 
 Command example 2 (one2many baseline, concatenated all the predicted keyphrases for one src, keyphrases are separated by `<sep>` token):
 
-`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many -one2many_mode 1 -delimiter_type 0 -batch_size 8`
+`python3 train.py -data data/kp20k_filtered/ -vocab data/kp20k_filtered/ -exp_path exp/%s.%s -exp kp20k_filtered -copy_attention -train_ml -one2many -one2many_mode 1 -delimiter_type 0 -batch_size 8`
 
 Command example 3 (one2many baseline, reset the hidden state after the prediction of each keyphrase, keyphrases are separated by `<eos>` token):
 
-`python3 train.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -copy_attention -train_ml -one2many -one2many_mode 1 -delimiter_type 1 -batch_size 8`
+`python3 train.py -data data/kp20k_filtered/ -vocab data/kp20k_filtered/ -exp_path exp/%s.%s -exp kp20k_filtered -copy_attention -train_ml -one2many -one2many_mode 1 -delimiter_type 1 -batch_size 8`
 
 Some common options for the training script:
 ```
--data []: path prefix to the "train.one2one.pt" and "train.one2many.pt" file path from preprocess.py, e.g., -data data/kp20k/
--vocab []: path prefix to the "vocab.pt" file path from preprocess.py, e.g., -vocab data/kp20k/
+-data []: path prefix to the "train.one2one.pt" and "train.one2many.pt" file path from preprocess.py, e.g., -data data/kp20k_filtered/
+-vocab []: path prefix to the "vocab.pt" file path from preprocess.py, e.g., -vocab data/kp20k_filtered/
 -exp []: name of the experiment for logging., e.g., kp20k
 -exp_path []: path of experiment log/plot, e.g., -exp_path exp/%s.%s, the %s will be filled by the value in -exp and timestamp
 -copy_attention: a flag for training a model with copy attention, we follow the copy attention in [See et al. 2017]
@@ -85,18 +86,18 @@ Examples of testing commands:
 
 First, run the predict.py to output all the predicted keyphrases to a text file.
 
-`python3 predict.py -data data/kp20k/ -vocab data/kp20k/ -exp_path exp/%s.%s -exp kp20k -pred_path pred/%s.%s -enc_layers 2 -batch_size 8 -beam_size 100 -copy_attention -model [path_to_saved_model]`
+`python3 predict.py -data data/kp20k_filtered/ -vocab data/kp20k_filtered/ -exp_path exp/%s.%s -exp kp20k -pred_path pred/%s.%s -enc_layers 2 -batch_size 8 -beam_size 100 -copy_attention -model [path_to_saved_model]`
 After that, it create a predict.txt in the path specified by pred_path, e.g., pred/predict.kp20k.bi-directional.20180914-095220/predictions.txt.
 For each line in the prediction.txt contains all the predicted keyphrases for a source. The keyphrases are separated by ';'.
 
 Then, run the evaluate_prediction.py to compute the evaluation metric
-`python3 evaluate_prediction.py -pred_file_path pred/predict.kp20k.bi-directional.20180916-152826/predictions.txt -src_file_path data/kp20k/test_src.txt -trg_file_path data/kp20k/test_trg.txt -exp_path exp/predict.kp20k.bi-directional.20180916-152826 -filtered_pred_path pred/predict.kp20k.bi-directional.20180916-152826 -exp kp20k -export_filtered_pred`
+`python3 evaluate_prediction.py -pred_file_path pred/predict.kp20k.bi-directional.20180916-152826/predictions.txt -src_file_path data/kp20k_filtered/test_src.txt -trg_file_path data/kp20k_filtered/test_trg.txt -exp_path exp/predict.kp20k.bi-directional.20180916-152826 -filtered_pred_path pred/predict.kp20k.bi-directional.20180916-152826 -exp kp20k -export_filtered_pred`
 
 The options for evaluate_prediction.py:
 ```
 -pred_file_path []: path of the file exported by predict.py
--src_file_path []: path of the source file in the dataset, e.g., data/kp20k/test_src.txt
--trg_file_path []: path of the target file in the dataset, e.g., data/kp20k/test_trg.txt
+-src_file_path []: path of the source file in the dataset, e.g., data/kp20k_filtered/test_src.txt
+-trg_file_path []: path of the target file in the dataset, e.g., data/kp20k_filtered/test_trg.txt
 -exp_path []: path for experiment log, which includes all the evaluation results
 -exp []: name of the experiment for logging, e.g., kp20k
 -export_filtered_pred: a flag for exporting all the filtered keyphrases to a file
@@ -107,7 +108,15 @@ The options for evaluate_prediction.py:
 First, run the interactive_predict.py to output all the predicted keyphrases to a text file.
 
 `python3 interactive_predict.py -vocab data/kp20k_filtered/ -src_file data/cross_domain/[src_file.txt] -trg_file data/cross_domain/[trg_file.txt] -pred_path pred/%s.%s -enc_layers 2 -copy_attention -one2many -one2many_mode 1 -delimiter 0 -model model/kp20k.rl.copy.bi-directional.20181216-174101/kp20k.rl.copy.bi-directional.epoch=9.batch=13728.total_batch=140000.model -max_length 60 -remove_title_eos -beam_size 50 -batch_size 8 -replace_unk`
-
+The options for interactive_predict.py:
+```
+-vocab []: path prefix to the "vocab.pt" file path from preprocess.py, e.g., -vocab data/kp20k_filtered/
+-src_file []: path of the source file in the dataset, e.g., data/kp20k_filtered/test_src.txt
+-trg_file []: path of the target file in the dataset, e.g., data/kp20k_filtered/test_trg.txt
+-pred_path []: path of the prediction file, e.g., -pred_path pred/%s.%s, the %s will be filled by the value in -exp and timestamp
+-export_filtered_pred: a flag for exporting all the filtered keyphrases to a file
+-filtered_pred_path []: path of the file that store the filtered keyphrases
+```
 
 ## TODO
 - [x] Beam Search

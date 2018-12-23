@@ -521,8 +521,8 @@ def interactive_predict_opts(parser):
     parser.add_argument('-attn_debug', action="store_true", help="Whether to print attn for each word")
     parser.add_argument('-src_file', required=True,
                         help="""Path to source file""")
-    parser.add_argument('-trg_file', required=True,
-                        help="""Path to target file""")
+    #parser.add_argument('-trg_file', required=True,
+    #                    help="""Path to target file""")
     parser.add_argument('-vocab', required=True,
                         help="""Path prefix to the "vocab.pt"
                             file path from preprocess.py""")

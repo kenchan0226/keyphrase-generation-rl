@@ -440,6 +440,14 @@ def tokenize_filter_data(
     return return_pairs
 
 
+def build_interactive_predict_dataset(tokenized_src, word2idx, idx2word, opt):
+    # build a dummy trg list, and then combine it with src, and pass it to the build_dataset method
+    num_lines = len(tokenized_src)
+    tokenized_trg = [['.']] * num_lines  # create a dummy tokenized_trg
+    tokenized_src_trg_pairs = list(zip(tokenized_src, tokenized_trg))
+    return build_dataset(tokenized_src_trg_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True)
+
+
 def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', include_original=False):
     '''
     Standard process for copy model
