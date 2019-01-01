@@ -78,27 +78,31 @@ def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list, match_by
             not_duplicate[i] = False
         else:
             not_duplicate[i] = True
-        if not match_by_str:  # match by word
-            # check if it appears in source text
-            match = False
-            for src_start_idx in range(len(src_str) - len(keyphrase_word_list) + 1):
-                match = True
-                for keyphrase_i, keyphrase_w in enumerate(keyphrase_word_list):
-                    src_w = src_str[src_start_idx + keyphrase_i]
-                    if src_w != keyphrase_w:
-                        match = False
+
+        if joined_keyphrase_str.strip() == "":  # if the keyphrase is an empty string
+            is_present[i] = False
+        else:
+            if not match_by_str:  # match by word
+                # check if it appears in source text
+                match = False
+                for src_start_idx in range(len(src_str) - len(keyphrase_word_list) + 1):
+                    match = True
+                    for keyphrase_i, keyphrase_w in enumerate(keyphrase_word_list):
+                        src_w = src_str[src_start_idx + keyphrase_i]
+                        if src_w != keyphrase_w:
+                            match = False
+                            break
+                    if match:
                         break
                 if match:
-                    break
-            if match:
-                is_present[i] = True
-            else:
-                is_present[i] = False
-        else:  # match by str
-            if joined_keyphrase_str in ' '.join(src_str):
-                is_present[i] = True
-            else:
-                is_present[i] = False
+                    is_present[i] = True
+                else:
+                    is_present[i] = False
+            else:  # match by str
+                if joined_keyphrase_str in ' '.join(src_str):
+                    is_present[i] = True
+                else:
+                    is_present[i] = False
         keyphrase_set.add(joined_keyphrase_str)
 
     return is_present, not_duplicate

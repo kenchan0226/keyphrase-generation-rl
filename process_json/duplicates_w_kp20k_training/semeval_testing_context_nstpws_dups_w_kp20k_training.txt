@@ -1,0 +1,88 @@
+semeval_testing_0 kp20k_training_186875 jc_sc:0.8936; scalable grid service discovery based on uddi | scalable grid service discovery based on uddi
+semeval_testing_1 kp20k_training_108243 jc_sc:0.7528; self adaptive applications on the grid | self adaptive applications on the grid
+semeval_testing_2 kp20k_training_491245 jc_sc:0.8324; intra flow loss recovery and control for volp | intra flow loss recovery and control for voip
+semeval_testing_3 kp20k_training_389867 jc_sc:0.8661; design and implementation of a distributed content management system | design and implementation of a distributed content management system
+semeval_testing_4 kp20k_training_264392 jc_sc:0.8475; operation context and context based operational transformation | operation context and context based operational transformation
+semeval_testing_6 kp20k_training_482868 jc_sc:0.6667; sensor deployment strategy for target detection | sensor deployment strategy for target detection
+semeval_testing_7 kp20k_training_159866 jc_sc:0.84; deployment issues of a voip conferencing system in a virtual conferencing environment | deployment issues of a voip conferencing system in a virtual conferencing environment
+semeval_testing_8 kp20k_training_95034 jc_sc:0.8897; an initial analysis and presentation of malware exhibiting swarm like behavior | an initial analysis and presentation of malware exhibiting swarm like behavior
+semeval_testing_11 kp20k_training_346918 jc_sc:0.8831; runtime metrics collection for middleware supported adaptation of mobile applications | runtime metrics collection for middleware supported adaptation of mobile applications
+semeval_testing_12 kp20k_training_59737 jc_sc:0.7857; implementation of a dynamic adjustment mechanism with efficient replica selection in data grid environments | implementation of a dynamic adjustment mechanism with efficient replica selection in data grid environments
+semeval_testing_13 kp20k_training_455762 jc_sc:0.7941; a high accuracy , low cost localization system for wireless sensor networks | a high accuracy , low cost localization system for wireless sensor networks
+semeval_testing_18 kp20k_training_416633 jc_sc:0.8229; buddycache high performance object storage for collaborative strong consistency applications in a wan | buddycache high performance object storage for collaborative strong consistency applications in a wan
+semeval_testing_19 kp20k_training_339589 jc_sc:0.8235; rewards based negotiation for providing context information | rewards based negotiation for providing context information
+semeval_testing_20 kp20k_training_586 jc_sc:0.8721; researches on scheme of pairwise key establishment for <unk> networks | researches on scheme of pairwise key establishment for distributed sensor networks
+semeval_testing_21 kp20k_training_516001 jc_sc:0.8958; encryption enforced access control in dynamic multi domain publish subscribe networks | encryption enforced access control in dynamic multi domain publish subscribe networks
+semeval_testing_22 kp20k_training_476191 jc_sc:0.8636; a framework for architecting peer to peer receiver driven overlays | a framework for architecting peer to peer receiver driven overlays
+semeval_testing_23 kp20k_training_17792 jc_sc:0.8634; edge indexing in a grid for highly dynamic virtual environments | edge indexing in a grid for highly dynamic virtual environments
+semeval_testing_24 kp20k_training_409389 jc_sc:0.8488; addressing strategic behavior in a deployed microeconomic resource allocator | addressing strategic behavior in a deployed microeconomic resource allocator
+semeval_testing_25 kp20k_training_244119 jc_sc:0.875; personalized query expansion for the web | personalized query expansion for the web
+semeval_testing_26 kp20k_training_45523 jc_sc:0.8295; using query contexts in information retrieval | using query contexts in information retrieval
+semeval_testing_27 kp20k_training_397708 jc_sc:0.8387; towards task based personal information management evaluations | towards task based personal information management evaluations
+semeval_testing_28 kp20k_training_218784 jc_sc:0.8348; utility based information distillation over temporally sequenced documents | utility based information distillation over temporally sequenced documents
+semeval_testing_29 kp20k_training_15220 jc_sc:0.8312; efficient bayesian hierarchical user modeling for recommendation systems | efficient bayesian hierarchical user modeling for recommendation system
+semeval_testing_30 kp20k_training_207292 jc_sc:0.8182; robust test collections for retrieval evaluation | robust test collections for retrieval evaluation
+semeval_testing_31 kp20k_training_464654 jc_sc:0.8571; learn from web search logs to organize search results | learn from web search logs to organize search results
+semeval_testing_32 kp20k_training_425975 jc_sc:0.7901; regularized clustering for documents | regularized clustering for documents
+semeval_testing_33 kp20k_training_95554 jc_sc:0.7797; laplacian optimal design for image retrieval | laplacian optimal design for image retrieval
+semeval_testing_34 kp20k_training_112699 jc_sc:0.8404; fast generation of result snippets in web search | fast generation of result snippets in web search
+semeval_testing_35 kp20k_training_324930 jc_sc:0.7969; the influence of caption features on clickthrough patterns in web search | the influence of caption features on clickthrough patterns in web search
+semeval_testing_36 kp20k_training_127191 jc_sc:0.8488; studying the use of popular destinations to enhance web search interaction | studying the use of popular destinations to enhance web search interaction
+semeval_testing_37 kp20k_training_341298 jc_sc:0.7717; the impact of caching on search engines | the impact of caching on search engines
+semeval_testing_37 kp20k_training_74485 jc_sc:0.7263; the impact of caching on search engines | design trade offs for search engine caching
+semeval_testing_38 kp20k_training_23841 jc_sc:0.8803; pruning policies for two tiered inverted index with correctness guarantee | pruning policies for two tiered inverted index with correctness guarantee
+semeval_testing_39 kp20k_training_497460 jc_sc:0.7658; topic segmentation with shared topic detection and alignment of multiple documents | topic segmentation with shared topic detection and alignment of multiple documents
+semeval_testing_40 kp20k_training_266784 jc_sc:0.8495; analyzing feature trajectories for event detection | analyzing feature trajectories for event detection
+semeval_testing_41 kp20k_training_30007 jc_sc:0.8247; new event detection based on indexing tree and named entity | new event detection based on indexing tree and named entity
+semeval_testing_42 kp20k_training_98876 jc_sc:0.7841; robust classification of rare queries using web knowledge | robust classification of rare queries using web knowledge
+semeval_testing_42 kp20k_training_211456 jc_sc:0.7253; robust classification of rare queries using web knowledge | classifying search queries using the web as a source of knowledge
+semeval_testing_43 kp20k_training_145659 jc_sc:0.8052; investigating the querying and browsing behavior of advanced search engine users | investigating the querying and browsing behavior of advanced search engine users
+semeval_testing_45 kp20k_training_48154 jc_sc:0.8701; a support vector method for optimizing average precision | a support vector method for optimizing average precision
+semeval_testing_46 kp20k_training_404581 jc_sc:0.8523; estimation and use of uncertainty in pseudo relevance feedback | estimation and use of uncertainty in pseudo relevance feedback
+semeval_testing_47 kp20k_training_257439 jc_sc:0.8523; latent concept expansion using markov random fields | latent concept expansion using markov random fields
+semeval_testing_48 kp20k_training_515116 jc_sc:0.8133; a study of poisson query generation model for information retrieval | a study of poisson query generation model for information retrieval
+semeval_testing_49 kp20k_training_300145 jc_sc:0.7612; interesting nuggets and their impact on definitional question answering | interesting nuggets and their impact on definitional question answering
+semeval_testing_50 kp20k_training_347563 jc_sc:0.8713; aborting tasks in bdi agents | aborting tasks in bdi agents
+semeval_testing_51 kp20k_training_234748 jc_sc:0.8511; meta level coordination for solving negotiation chains in semi cooperative multi agent systems | meta level coordination for solving negotiation chains in semi cooperative multi agent systems
+semeval_testing_52 kp20k_training_21519 jc_sc:0.8; towards self organising agent based resource allocation in a multi server environment | towards self organising agent based resource allocation in a multi server environment
+semeval_testing_53 kp20k_training_504197 jc_sc:0.8971; dynamic semantics for agent communication languages | dynamic semantics for agent communication languages
+semeval_testing_54 kp20k_training_338005 jc_sc:0.7528; commitment and extortion | commitment and extortion
+semeval_testing_57 kp20k_training_347125 jc_sc:0.7432; real time agent characterization and prediction | real time agent characterization and prediction
+semeval_testing_58 kp20k_training_414247 jc_sc:0.7963; sharing experiences to learn user characteristics in dynamic environments with sparse data | sharing experiences to learn user characteristics in dynamic environments with sparse data
+semeval_testing_59 kp20k_training_440365 jc_sc:0.8696; a reinforcement learning based distributed search algorithm for hierarchical peer to peer information retrieval systems | a reinforcement learning based distributed search algorithm for hierarchical peer to peer information retrieval systems
+semeval_testing_60 kp20k_training_72491 jc_sc:0.8529; information searching and sharing in large scale dynamic networks | information searching and sharing in large scale dynamic networks
+semeval_testing_61 kp20k_training_280227 jc_sc:0.8434; an advanced bidding agent for advertisement selection on public displays | an advanced bidding agent for advertisement selection on public displays
+semeval_testing_62 kp20k_training_199718 jc_sc:0.5932; collaboration among a satellite swarm | collaboration among a satellite swarm
+semeval_testing_63 kp20k_training_153462 jc_sc:0.8416; bidding optimally in concurrent second price auctions of perfectly substitutable goods | bidding optimally in concurrent second price auctions of perfectly substitutable goods
+semeval_testing_64 kp20k_training_4601 jc_sc:0.8165; computing the banzhaf power index in network flow games | computing the banzhaf power index in network flow games
+semeval_testing_65 kp20k_training_246929 jc_sc:0.8804; interactions between market barriers and communication networks in marketing systems | interactions between market barriers and communication networks in marketing systems
+semeval_testing_66 kp20k_training_247415 jc_sc:0.7654; realistic cognitive load modeling for enhancing shared mental models in human agent collaboration | realistic cognitive load modeling for enhancing shared mental models in human agent collaboration
+semeval_testing_67 kp20k_training_268956 jc_sc:0.8608; sequential decision making in parallel two sided economic search | sequential decision making in parallel two sided economic search
+semeval_testing_68 kp20k_training_295230 jc_sc:0.8819; distributed management of flexible times schedules | distributed management of flexible times schedules
+semeval_testing_69 kp20k_training_131171 jc_sc:0.8293; distributed task allocation in social networks | distributed task allocation in social networks
+semeval_testing_70 kp20k_training_307042 jc_sc:0.8316; reasoning about judgment and preference aggregation | reasoning about judgment and preference aggregation
+semeval_testing_70 kp20k_training_120354 jc_sc:0.7573; reasoning about judgment and preference aggregation | on the logic of preference and judgment aggregation
+semeval_testing_71 kp20k_training_159394 jc_sc:0.7753; an adversarial environment model for bounded rational agents in zero sum interactions | an adversarial environment model for bounded rational agents in zero sum interactions
+semeval_testing_72 kp20k_training_524317 jc_sc:0.7368; a formal road from institutional norms to organizational structures | a formal road from institutional norms to organizational structures
+semeval_testing_73 kp20k_training_304586 jc_sc:0.8699; resolving conflict and inconsistency in norm regulated virtual organizations | resolving conflict and inconsistency in norm regulated virtual organizations
+semeval_testing_74 kp20k_training_105608 jc_sc:0.8529; distributed norm management in regulated multi agent systems | distributed norm management in regulated multiagent systems
+semeval_testing_76 kp20k_training_376478 jc_sc:0.8195; worst case optimal redistribution of vcg payments | worst case optimal redistribution of vcg payments
+semeval_testing_77 kp20k_training_325528 jc_sc:0.7812; budget optimization in search based advertising auctions | budget optimization in search based advertising auctions
+semeval_testing_78 kp20k_training_158870 jc_sc:0.8421; revenue analysis of a family of ranking rules for keyword auctions | revenue analysis of a family of ranking rules for keyword auctions
+semeval_testing_79 kp20k_training_32027 jc_sc:0.8376; the role of compatibility in the diffusion of technologies through social networks | the role of compatibility in the diffusion of technologies through social networks
+semeval_testing_80 kp20k_training_143978 jc_sc:0.6824; strong equilibrium in cost sharing connection games | strong equilibrium in cost sharing connection games
+semeval_testing_81 kp20k_training_49640 jc_sc:0.7526; computation in a distributed information market | computation in a distributed information market
+semeval_testing_82 kp20k_training_136606 jc_sc:0.84; understanding user behavior in online feedback reporting | understanding user behavior in online feedback reporting
+semeval_testing_83 kp20k_training_217394 jc_sc:0.8512; trading networks with price setting agents | trading networks with price setting agents
+semeval_testing_86 kp20k_training_512989 jc_sc:0.8105; generalized value decomposition and structured multiattribute auctions | generalized value decomposition and structured multiattribute auctions
+semeval_testing_87 kp20k_training_449230 jc_sc:0.8594; truthful mechanism design for multi dimensional scheduling via cycle monotonicity | truthful mechanism design for multi dimensional scheduling via cycle monotonicity
+semeval_testing_88 kp20k_training_184032 jc_sc:0.8246; mediators in position auctions | mediators in position auctions
+semeval_testing_90 kp20k_training_332594 jc_sc:0.8495; a strategic model for information markets | a strategic model for information markets
+semeval_testing_91 kp20k_training_91513 jc_sc:0.8598; betting on permutations | betting on permutations
+semeval_testing_92 kp20k_training_279305 jc_sc:0.8168; frugality ratios and improved truthful mechanisms for vertex cover | frugality ratios and improved truthful mechanisms for vertex cover
+semeval_testing_93 kp20k_training_524579 jc_sc:0.7699; betting boolean style a framework for trading in securities based on logical formulas | betting boolean style a framework for trading in securities based on logical formulas
+semeval_testing_94 kp20k_training_222184 jc_sc:0.7961; combinatorial agency | combinatorial agency
+semeval_testing_95 kp20k_training_438899 jc_sc:0.7905; learning from revealed preference | learning from revealed preference
+semeval_testing_96 kp20k_training_186194 jc_sc:0.7647; approximately strategyproof and tractable multi unit auctions | approximately strategyproof and tractable multi unit auctions
+semeval_testing_97 kp20k_training_329012 jc_sc:0.8113; implementation with a bounded action space | implementation with a bounded action space
+semeval_testing_98 kp20k_training_429114 jc_sc:0.7444; computing the optimal strategy to commit to | computing the optimal strategy to commit to
