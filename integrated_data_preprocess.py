@@ -16,8 +16,8 @@ DIGIT = '<digit>'
 KEYWORDS_TUNCATE = 10
 MAX_KEYWORD_LEN = 6
 PRINTABLE = set(string.printable)
-CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2017-06-09')
-
+# CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2017-06-09')
+CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
 
 def check_present_idx(src_str, keyphrase_str_list):
     """
