@@ -60,6 +60,10 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num):
     :param src_tokens: tokenized src, a list of words
     :return: a string that contains all the variations of a given keyphrase, the variations are separated by '|', e.g., 'v11 v12|v21 v22'
     """
+
+    if keyphrase == "":
+        return ""
+
     keyphrase_variations = []
     # insert the acronym as one of the variations if there is a () place at the end of the keyphrase
     if keyphrase[-1] == ')':
@@ -72,9 +76,12 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num):
 
     # debug, if after filtering, keyphrase becomes empty:
     if keyphrase_filtered == "":
+        # If the keyphrase becomes empty after removing parenthesis, replace with the value inside the paraenthesis.
+        keyphrase_filtered = acronym
         print("Keyphrase becomes empty after removing parenthesis")
-        print(keyphrase)
-        exit()
+        print("From {} to {}.".format(keyphrase, keyphrase_filtered))
+        #print(keyphrase)
+        #exit()
 
     keyphrase_variations.append(get_tokens(keyphrase_filtered, fine_grad))
     # find variations from wikipedia
@@ -126,7 +133,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad):
         exit()
     except KeyError as e:
         print(keyphrase)
-        if e == 'pages':
+        if e.args[0] == 'pages':
             return []
         else:
             print(e)
@@ -190,7 +197,7 @@ def get_tokens(text, fine_grad=True):
         tokens = text.split()
     # replace the digit terms with <digit>
     tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
-    tokens = CoreNLP.word_tokenize(' '.join(tokens))
+    # tokens = CoreNLP.word_tokenize(' '.join(tokens))
     # c = ' '.join(CoreNLP.word_tokenize(c.strip())) + '\n'
 
     return tokens
