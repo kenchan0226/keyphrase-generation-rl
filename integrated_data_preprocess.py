@@ -517,8 +517,8 @@ if __name__ == '__main__':
     # set -fine_grad; -use_orig_keys
     #
     if opts.use_corenlp:
-        CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2016-10-31')
-        # CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
+        # CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2016-10-31')
+        CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
 
     if opts.match_ending_parenthesis:
         ending_parenthesis_output_path = os.path.join(opts.json_home, "{}_{}_ending_parenthesis_output.txt".format(opts.dataset, opts.data_type))
