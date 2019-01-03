@@ -16,8 +16,7 @@ DIGIT = '<digit>'
 KEYWORDS_TUNCATE = 10
 MAX_KEYWORD_LEN = 6
 PRINTABLE = set(string.printable)
-# CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2017-06-09')
-CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
+
 
 def check_present_idx(src_str, keyphrase_str_list):
     """
@@ -54,12 +53,14 @@ def check_present_idx(src_str, keyphrase_str_list):
     return present_indices
 
 
-def find_variations(keyphrase, src_tokens, fine_grad, limit_num):
+def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_parenthesis, use_corenlp):
     """
     :param keyphrase: must be stripped
     :param src_tokens: tokenized src, a list of words
     :return: a string that contains all the variations of a given keyphrase, the variations are separated by '|', e.g., 'v11 v12|v21 v22'
     """
+
+    extract_acronym_flag = False
 
     if keyphrase == "":
         return ""
@@ -70,7 +71,9 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num):
         match_list = re.findall('\((.*?)\)', keyphrase)  # match all str inside parenthesis
         if len(match_list) > 0:
             acronym = match_list[-1]  # the last match should be an acronym
-            keyphrase_variations.append(get_tokens(acronym, fine_grad))
+            if match_ending_parenthesis and len(acronym) > 1:
+                keyphrase_variations.append(get_tokens(acronym, fine_grad, use_corenlp))
+                extract_acronym_flag = True
     # remove the parenthesis and insert the keyphrase as one of the variations
     keyphrase_filtered = re.sub(r'\(.*?\)', '', keyphrase).strip()
 
@@ -78,14 +81,16 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num):
     if keyphrase_filtered == "":
         # If the keyphrase becomes empty after removing parenthesis, replace with the value inside the paraenthesis.
         keyphrase_filtered = acronym
-        print("Keyphrase becomes empty after removing parenthesis")
-        print("From {} to {}.".format(keyphrase, keyphrase_filtered))
+        extract_acronym_flag = False
+        #print("Keyphrase becomes empty after removing parenthesis")
+        #print("From {} to {}.".format(keyphrase, keyphrase_filtered))
         #print(keyphrase)
         #exit()
 
-    keyphrase_variations.append(get_tokens(keyphrase_filtered, fine_grad))
-    # find variations from wikipedia
-    keyphrase_variations += find_variations_from_wiki(keyphrase_filtered, src_tokens, fine_grad)  # a list of word list
+    keyphrase_variations.append(get_tokens(keyphrase_filtered, fine_grad, use_corenlp))
+    # find variations from wikipedia, wiki_variations: a list of word list
+    wiki_variations, match_disambiguation_flag = find_variations_from_wiki(keyphrase_filtered, src_tokens, fine_grad, use_corenlp)
+    keyphrase_variations += wiki_variations
     # remove duplicates
     # keyphrase_variations contains the original keyphrase, the text within a () in the original keyphrase if any, and the variations from wiki
     # we need to remove duplicate variations, i.e., we only keep the variations that have unique word stems
@@ -93,16 +98,18 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num):
     keyphrase_variations_stemmed = string_helper.stem_str_list(keyphrase_variations)  # a list of word list
     not_duplicate = check_duplicate_keyphrases(keyphrase_variations_stemmed)  # a boolean np array
     keyphrase_variations_unique = [' '.join(v) for v, is_keep in zip(keyphrase_variations, not_duplicate) if is_keep and (not limit_num or len(v) <= MAX_KEYWORD_LEN)]  # ['v11 v12', 'v21 v22']
-    return '|'.join(keyphrase_variations_unique)  # 'v11 v12|v21 v22'
+    return '|'.join(keyphrase_variations_unique), match_disambiguation_flag, extract_acronym_flag  # 'v11 v12|v21 v22'
 
 
-def find_variations_from_wiki(keyphrase, src_tokens, fine_grad):
+def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp):
     """
     :param phrase:
     :param src_str: tokenized source
-    :return: a list of tokenized phrase variations, contains the title of the entity as well as the titles that redirected to the entities
+    :return: a list of tokenized phrase variations, contains the title of the entity as well as the titles that redirected to the entities; a flag for indicating that we find a disambiguation that match the source str
     """
     wiki_variations = []
+    match_disambiguation_flag = False
+
     try:
         entity = wikipedia.page(title=keyphrase, auto_suggest=False, redirect=True)
         entity_title = entity.title  # without lowercase
@@ -113,7 +120,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad):
         stage = 2
         possible_titles = e.options  # fetch all the possible entity titles, a list of str, without lowercase
         # lowercase and then tokenize possible titles, ignore it if a possible title is an empty string
-        possible_titles_tokenized = [get_tokens(title.lower(), fine_grad) for title in possible_titles if title.strip()!= '']  # a list of word lists
+        possible_titles_tokenized = [get_tokens(title.lower(), fine_grad, use_corenlp) for title in possible_titles if title.strip()!= '']  # a list of word lists
         # stem possible titles
         possible_titles_stemmed = string_helper.stem_str_list(possible_titles_tokenized)  # a list of word lists
         # stem src
@@ -121,23 +128,26 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad):
         is_present, not_duplicate = check_present_and_duplicate_keyphrases(src_stemmed, possible_titles_stemmed)
         possible_titles_that_present_in_src = [title for title, is_keep in zip(possible_titles, is_present) if is_keep]
         if len(possible_titles_that_present_in_src) == 0:
-            return []
+            return [], match_disambiguation_flag
         else:
             entity_title = possible_titles_that_present_in_src[0]
+            match_disambiguation_flag = True
 
     except wikipedia.exceptions.PageError as e:
-        return []
+        return [], match_disambiguation_flag
     except wikipedia.exceptions.WikipediaException as e:
         print(keyphrase)
         print(e)
         exit()
     except KeyError as e:
-        print(keyphrase)
+        return [], match_disambiguation_flag
+        """
         if e.args[0] == 'pages':
             return []
         else:
             print(e)
             exit()
+        """
     except Exception as e:  # catch *all* exceptions
         print(keyphrase)
         print(e)
@@ -151,14 +161,14 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad):
             print(possible_titles_that_present_in_src)
         exit()
 
-    entity_title_tokens = get_tokens(entity_title.lower(), fine_grad)  # lowercase and tokenize
+    entity_title_tokens = get_tokens(entity_title.lower(), fine_grad, use_corenlp)  # lowercase and tokenize
     wiki_variations.append(entity_title_tokens)
-    wiki_variations += find_redirected_titles(entity_title, fine_grad)  # a list of word list
+    wiki_variations += find_redirected_titles(entity_title, fine_grad, use_corenlp)  # a list of word list
     # wiki_variations contains the title of the entity as well as the titles that redirected to the entities
-    return wiki_variations
+    return wiki_variations, match_disambiguation_flag
 
 
-def find_redirected_titles(entity_title, fine_grad):
+def find_redirected_titles(entity_title, fine_grad, use_corenlp):
     """
     :param entity_title: without lowercase
     :return: titles_that_redicted_to_the_entity: a list of list of words, tokenized
@@ -170,7 +180,7 @@ def find_redirected_titles(entity_title, fine_grad):
     response_json = json.loads(response.text)
     # lowercase and remove the parenthesis in the titles that are redirected to the entitiy, and then tokenize it
     try:
-        titles_that_redirected_to_the_entity = [get_tokens(re.sub(r'\(.*?\)', "", entry['title'].lower()).strip(), fine_grad) for
+        titles_that_redirected_to_the_entity = [get_tokens(re.sub(r'\(.*?\)', "", entry['title'].lower()).strip(), fine_grad, use_corenlp) for
                                             entry in response_json['query']['backlinks']]  # a list of word list
     except KeyError as e:
         print(e)
@@ -181,7 +191,7 @@ def find_redirected_titles(entity_title, fine_grad):
     return titles_that_redirected_to_the_entity
 
 
-def get_tokens(text, fine_grad=True):
+def get_tokens(text, fine_grad=True, use_corenlp=True):
     """
     Need use the same word tokenizer between keywords and source context
     keep [_<>,\(\)\.\'%], replace digits to <digit>, split by [^a-zA-Z0-9_<>,\(\)\.\'%]
@@ -197,42 +207,78 @@ def get_tokens(text, fine_grad=True):
         tokens = text.split()
     # replace the digit terms with <digit>
     tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
-    # tokens = CoreNLP.word_tokenize(' '.join(tokens))
+    if use_corenlp:
+        tokens = CoreNLP.word_tokenize(' '.join(tokens))
     # c = ' '.join(CoreNLP.word_tokenize(c.strip())) + '\n'
 
     return tokens
 
 
-def process_keyphrase(keyword_str, src_tokens, variations=True, limit_num=True, fine_grad=True):
+def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False, limit_num=True, fine_grad=True, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True):
+    if variations and sort_keyphrases:
+        raise ValueError("You cannot use sort_keyphrases when you need to find the variations of each keyphrase")
     # remove question mark
-    keyword_str = keyword_str.replace('?', '')
+    #keyword_str = keyword_str.replace('?', '')
     # remove the any '[' or ']' symbol
-    keyword_str = keyword_str.replace('[', '')
-    keyword_str = keyword_str.replace(']', '')
+    #keyword_str = keyword_str.replace('[', '')
+    #keyword_str = keyword_str.replace(']', '')
+    #keyword_str = keyword_str.replace('|', '')
+    # remove '?', '[', ']', '|', '\\' characters
+    keyword_str = re.sub(r'[\\|\[\]?]', '', keyword_str)
     keyphrase_list = []
+    keyphrase_token_2dlist = []
     for keyphrase in keyword_str.split(';'):
         keyphrase = keyphrase.strip()
         if len(keyphrase) > 0:  # if keyphrase is not an empty string
+            keyphrase_stat['num_keyphrases'] += 1
             if variations:
-                keyphrase_variations = find_variations(keyphrase, src_tokens, fine_grad, limit_num)  # str of variations, e.g., 'v11 v12|v21 v22'
+                keyphrase_variations, match_disambiguation_flag, extract_acronym_flag = find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_parenthesis, use_corenlp)  # str of variations, e.g., 'v11 v12|v21 v22'
                 if len(keyphrase_variations) > 0:
                     keyphrase_list.append(keyphrase_variations)
+                    keyphrase_stat['num_variations'] += len(keyphrase_variations)
+                    if match_disambiguation_flag:
+                        keyphrase_stat['num_keyphrases_with_match_disambiguation'] += 1
+                    if extract_acronym_flag:
+                        keyphrase_stat['num_extracted_acronym'] += 1
+                    if len(keyphrase_variations) > 1:
+                        keyphrase_stat['num_keyphrases_with_variations'] += 1
+
             else:
-                keyphrase = re.sub(r'\(.*?\)', '', keyphrase)  # remove text in parenthesis
+                keyphrase_filtered = re.sub(r'\(.*?\)', '', keyphrase).strip()  # remove text in parenthesis
+                if keyphrase_filtered == "":  # if keyphrase is empty after removing parenthesis, just keep the text inside the parenthesis
+                    match_list = re.findall('\((.*?)\)', keyphrase)  # match all str inside parenthesis
+                    keyphrase = match_list[-1]
+                else:
+                    keyphrase = keyphrase_filtered
                 # tokenize, then serialize and add to the keyphrase_list if it does not exceed MAX_KEYWORD_LEN
-                keyphrase_tokens = get_tokens(keyphrase.strip(), fine_grad)  # word list
+                keyphrase_tokens = get_tokens(keyphrase.strip(), fine_grad, use_corenlp)  # word list
                 if len(keyphrase_tokens) == 0:
                     continue
                 elif limit_num and len(keyphrase_tokens) > MAX_KEYWORD_LEN:
                     continue
                 else:
+                    keyphrase_token_2dlist.append(keyphrase_tokens)
                     keyphrase = ' '.join(keyphrase_tokens)  # a keyphrase str, e.g., 'k11 k12'
                     keyphrase_list.append(keyphrase)
+
+    if sort_keyphrases:
+        keyphrase_list = sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyphrase_token_2dlist)
+
     # a list of keyphrase str
     return keyphrase_list
 
 
-def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=True, use_orig_keys=False, variations=False):
+def sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyphrase_token_2dlist):
+    # stem the token list and check the present idx
+    src_tokens_stemmed = string_helper.stem_word_list(src_tokens)
+    keyphrase_token_2dlist_stemmed = string_helper.stem_str_list(keyphrase_token_2dlist)
+    present_idx_array = check_present_idx(src_tokens_stemmed, keyphrase_token_2dlist_stemmed)
+    # rearrange the order in keyphrase list
+    sorted_keyphrase_indices = np.argsort(present_idx_array)
+    return [keyphrase_list[idx] for idx in sorted_keyphrase_indices]
+
+
+def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=True, use_orig_keys=False, variations=False, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True):
     """
     process the original json file into a txt file for corenlp tokenizing
     :param json_home: the home directory of the json files of KP20k
@@ -241,16 +287,34 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
     :param use_orig_keys: Whether directly use the original keys (unprocessed).
     :return: None
     """
+    keyphrase_stat = {'num_keyphrases_with_variations': 0, 'num_keyphrases': 0, 'num_variations': 0,
+                      'num_keyphrases_with_match_disambiguation': 0, 'num_extracted_acronym': 0}
+    #num_keyphrases_with_variations = 0
+    #num_keyphrases = 0
+    #num_variations = 0
+    #num_keyphrases_with_match_disambiguation = 0
+
+    if variations and sort_keyphrases:
+        raise ValueError("You cannot use sort_keyphrases when you need to find the variations of each keyphrase")
+
     print('\nProcessing {} data...'.format(data_type))
     saved_data_dir = os.path.join(saved_home, 'data_for_corenlp')
     if not os.path.exists(saved_data_dir):
         os.makedirs(saved_data_dir)
     json_file_name = os.path.join(json_home, "{}_{}.json".format(dataset, data_type))
     json_file = open(json_file_name, encoding='utf-8')
-    processed_keyword_file = open(os.path.join(saved_data_dir, "{}_{}_keyword_for_corenlp.txt".format(dataset, data_type)),
+    processed_files_suffix = ""
+    if variations:
+        processed_files_suffix += "_variations"
+    if sort_keyphrases:
+        processed_files_suffix += "_sorted"
+    if match_ending_parenthesis:
+        processed_files_suffix += "_parenthesis"
+
+    processed_keyword_file = open(os.path.join(saved_data_dir, "{}_{}_keyword_for_corenlp{}.txt".format(dataset, data_type, processed_files_suffix)),
                                   'w', encoding='utf-8')
     # context = title + '.' + '<eos>' + abstract
-    processed_context_file = open(os.path.join(saved_data_dir, "{}_{}_context_for_corenlp.txt".format(dataset, data_type)),
+    processed_context_file = open(os.path.join(saved_data_dir, "{}_{}_context_for_corenlp{}.txt".format(dataset, data_type, processed_files_suffix)),
                                   'w', encoding='utf-8')
     lines = json_file.readlines()
     for line_idx in tqdm(range(len(lines))):
@@ -271,14 +335,17 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
         context = title + ' . ' + ' <eos> ' + abstract
 
         # for fine granularity tokenization
-        context_tokens = get_tokens(context, fine_grad=fine_grad)
+        context_tokens = get_tokens(context, fine_grad=fine_grad, use_corenlp=use_corenlp)
         context = ' '.join(context_tokens)
         if not use_orig_keys:
             if data_type != 'testing':
-                # keyword_str, src_tokens, find_variations=True, limit_num=True, fine_grad=True
-                keywords = ';'.join(process_keyphrase(keywords, context_tokens, variations=variations, limit_num=True, fine_grad=fine_grad))
+                limit_num = True
             else:
-                keywords = ';'.join(process_keyphrase(keywords, context_tokens, variations=variations, limit_num=False, fine_grad=fine_grad))
+                limit_num = False
+            keywords = ';'.join(
+                process_keyphrase(keywords, context_tokens, keyphrase_stat, variations=variations, limit_num=limit_num,
+                                  fine_grad=fine_grad, sort_keyphrases=sort_keyphrases,
+                                  match_ending_parenthesis=match_ending_parenthesis, use_corenlp=use_corenlp))
         else:
             keywords = ';'.join(keywords.strip().split(';'))
 
@@ -290,7 +357,14 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
 
     processed_keyword_file.close()
     processed_context_file.close()
-
+    print("# keyphrases: {}".format(keyphrase_stat['num_keyphrases']))
+    if variations:
+        print("# variations: {}".format(keyphrase_stat['num_variations']))
+        print("# keyphrases with variations: {}".format(keyphrase_stat['num_keyphrases_with_variations']))
+        print("# keyphrases with match disambiguation: {}".format(keyphrase_stat['num_keyphrases_with_match_disambiguation']))
+    if match_ending_parenthesis:
+        print("# num extracted acronyms: {}".format(keyphrase_stat['num_extracted_acronym']))
+    # keyphrase_stat = {'num_keyphrases_with_variations': 0, 'num_keyphrases': 0, 'num_variations': 0, 'num_keyphrases_with_match_disambiguation': 0}
 
 def filter_dups(saved_home, dups_info_home):
     """
@@ -413,7 +487,7 @@ if __name__ == '__main__':
                         default='process_json/duplicates_w_kp20k_training')
     parser.add_argument('-dataset', type=str, default='kp20k',
                         choices=['kp20k', 'inspec', 'krapivin', 'nus', 'semeval'])
-    parser.add_argument('-data_type', type=str, default='validation', choices=['training', 'validation', 'testing'])
+    parser.add_argument('-data_type', type=str, default='validation', choices=['training', 'validation', 'testing', 'debug'])
     parser.add_argument('-fine_grad', action='store_true',
                         help='Whether tokenizing the text in the style of RuiMeng before using cornlp tokenizing')
     #parser.add_argument('-lowercase', action='store_true',
@@ -422,6 +496,13 @@ if __name__ == '__main__':
                         help='Whether directly use the original keys (unprocessed).')
     parser.add_argument('-variations', action='store_true',
                         help='Whether to enrich the keyphrases with their variations from wikipeida.')
+    parser.add_argument('-sort_keyphrases', action='store_true',
+                        help='Whether to sort the keyphrases according to their first occurrence in the source.')
+    parser.add_argument('-match_ending_parenthesis', action='store_true',
+                        help='Whether to extract an acronym from the ending parenthesis.')
+    parser.add_argument('-use_corenlp', action='store_true',
+                        help='Whether to use stanford corenlp tokenizing')
+
     opts = parser.parse_args()
 
     # 1. convert the json file into txt file w/
@@ -433,8 +514,18 @@ if __name__ == '__main__':
     #
     # set -fine_grad; -use_orig_keys
     #
+    if opts.use_corenlp:
+        CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2016-10-31')
+    # CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
+
+    if opts.match_ending_parenthesis:
+        ending_parenthesis_output_path = os.path.join(opts.json_home, "{}_{}_ending_parenthesis_output.txt".format(opts.dataset, opts.data_type))
+        # processed_keyword_file = open(os.path.join(saved_data_dir, "{}_{}_keyword_for_corenlp.txt".format(dataset, data_type)), 'w', encoding='utf-8')
+
     json2txt_for_corenlp(json_home=opts.json_home, dataset=opts.dataset, data_type=opts.data_type, saved_home=opts.saved_home,
-                         fine_grad=opts.fine_grad, use_orig_keys=opts.use_orig_keys, variations=opts.variations)
+                         fine_grad=opts.fine_grad, use_orig_keys=opts.use_orig_keys, variations=opts.variations,
+                         sort_keyphrases=opts.sort_keyphrases, match_ending_parenthesis=opts.match_ending_parenthesis,
+                         use_corenlp=opts.use_corenlp)
 
     # 2. filter out the duplicates in the kp20k training data
     # filter_dups(saved_home=opts.saved_home, dups_info_home=opts.dups_info_home)
