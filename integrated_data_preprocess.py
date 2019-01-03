@@ -57,7 +57,7 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_pa
     """
     :param keyphrase: must be stripped
     :param src_tokens: tokenized src, a list of words
-    :return: a string that contains all the variations of a given keyphrase, the variations are separated by '|', e.g., 'v11 v12|v21 v22'
+    :return: a list of keyphrase variations
     """
 
     extract_acronym_flag = False
@@ -98,7 +98,8 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_pa
     keyphrase_variations_stemmed = string_helper.stem_str_list(keyphrase_variations)  # a list of word list
     not_duplicate = check_duplicate_keyphrases(keyphrase_variations_stemmed)  # a boolean np array
     keyphrase_variations_unique = [' '.join(v) for v, is_keep in zip(keyphrase_variations, not_duplicate) if is_keep and (not limit_num or len(v) <= MAX_KEYWORD_LEN)]  # ['v11 v12', 'v21 v22']
-    return '|'.join(keyphrase_variations_unique), match_disambiguation_flag, extract_acronym_flag  # 'v11 v12|v21 v22'
+    return keyphrase_variations_unique, match_disambiguation_flag, extract_acronym_flag  # 'v11 v12|v21 v22'
+    #return '|'.join(keyphrase_variations_unique), match_disambiguation_flag, extract_acronym_flag  # 'v11 v12|v21 v22'
 
 
 def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp):
@@ -233,8 +234,9 @@ def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False,
             keyphrase_stat['num_keyphrases'] += 1
             if variations:
                 keyphrase_variations, match_disambiguation_flag, extract_acronym_flag = find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_parenthesis, use_corenlp)  # str of variations, e.g., 'v11 v12|v21 v22'
+                keyphrase_variations_str = '|'.join(keyphrase_variations) # serialize it into a string, each variation is separated by '|', e.g., 'v11 v12|v21 v22'
                 if len(keyphrase_variations) > 0:
-                    keyphrase_list.append(keyphrase_variations)
+                    keyphrase_list.append(keyphrase_variations_str)
                     keyphrase_stat['num_variations'] += len(keyphrase_variations)
                     if match_disambiguation_flag:
                         keyphrase_stat['num_keyphrases_with_match_disambiguation'] += 1
@@ -516,7 +518,7 @@ if __name__ == '__main__':
     #
     if opts.use_corenlp:
         CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2016-10-31')
-    # CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
+        # CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
 
     if opts.match_ending_parenthesis:
         ending_parenthesis_output_path = os.path.join(opts.json_home, "{}_{}_ending_parenthesis_output.txt".format(opts.dataset, opts.data_type))
