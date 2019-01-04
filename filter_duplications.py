@@ -86,12 +86,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='integrated_data_preprocess')
     parser.add_argument('-saved_home', type=str, default='process_json/integrated_processed_data')
     parser.add_argument('-context_file_path', type=str,
-                        default='process_json/integrated_processed_data')
+                        default='process_json/integrated_processed_data/data_for_corenlp/kp20k_training_context_for_corenlp_sorted.txt')
     parser.add_argument('-keyword_file_path', type=str,
-                        default='process_json/integrated_processed_data')
-
+                        default='process_json/integrated_processed_data/data_for_corenlp/kp20k_training_keyword_for_corenlp_sorted.txt')
     parser.add_argument('-dups_info_home', type=str,
                         default='process_json/duplicates_w_kp20k_training')
     opts = parser.parse_args()
-    filter_dups(saved_home=opts.saved_home, dups_info_home=opts.dups_info_home, context_file=opts.context_file, keyword_file=opts.keyword_file)
+    filter_dups(saved_home=opts.saved_home, dups_info_home=opts.dups_info_home, context_file_path=opts.context_file_path, keyword_file_path=opts.keyword_file_path)
 
