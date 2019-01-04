@@ -176,18 +176,18 @@ def find_redirected_titles(entity_title, fine_grad, use_corenlp):
     :return: titles_that_redicted_to_the_entity: a list of list of words, tokenized
     """
     # find all the names that are redirected to this entity
+    url = "http://en.wikipedia.org/w/api.php?action=query&list=backlinks&bltitle={}&blfilterredir=redirects&format=json".format(
+        entity_title)
     max_retry = 100
     for i in range(max_retry):
         try:
-            url = "http://en.wikipedia.org/w/api.php?action=query&list=backlinks&bltitle={}&blfilterredir=redirects&format=json".format(
-                entity_title)
+            response = requests.get(url)
             break
         except requests.ConnectionError:
             if i == max_retry - 1:
                 raise ValueError("Retry for {} times, still cannot get the redirected titles".format(max_retry))
             time.sleep(10)
 
-    response = requests.get(url)
     response_json = json.loads(response.text)
     # lowercase and remove the parenthesis in the titles that are redirected to the entitiy, and then tokenize it
     try:
