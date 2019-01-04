@@ -3,20 +3,31 @@ from tqdm import tqdm
 import argparse
 
 
-def filter_dups(saved_home, dups_info_home):
+def filter_dups(saved_home, dups_info_home, context_file_path, keyword_file_path):
     """
     filter out the duplicates in the training data with the testing data according to the obtained duplication info file.
     :param saved_home: non-filtered data home
     :param dups_info_home: duplication information home
     :return: None
     """
-    orig_context_file = open(os.path.join(saved_home, 'data_for_corenlp', 'kp20k_training_context_for_corenlp.txt'),
-                             encoding='utf-8')
+    #orig_context_file = open(os.path.join(saved_home, 'data_for_corenlp', 'kp20k_training_context_for_corenlp.txt'),
+    #                         encoding='utf-8')
+    #context_lines = orig_context_file.readlines()
+    #orig_allkeys_file = open(os.path.join(saved_home, 'data_for_corenlp', 'kp20k_training_keyword_for_corenlp.txt'),
+    #                         encoding='utf-8')
+
+    orig_context_file = open(context_file_path, encoding='utf-8')
     context_lines = orig_context_file.readlines()
-    orig_allkeys_file = open(os.path.join(saved_home, 'data_for_corenlp', 'kp20k_training_keyword_for_corenlp.txt'),
-                             encoding='utf-8')
+    orig_allkeys_file = open(keyword_file_path, encoding='utf-8')
     allkeys_lines = orig_allkeys_file.readlines()
     assert len(context_lines) == len(allkeys_lines)
+
+    context_file_name = os.path.split(context_file_path)[1]
+    context_file_name = os.path.splitext(context_file_name)[0]
+    filtered_context_file_name = "{}_filtered".format(context_file_name)
+    keyword_file_name = os.path.split(keyword_file_path)[1]
+    keyword_file_name = os.path.splitext(keyword_file_name)[0]
+    filtered_keyword_file_name = "{}_filtered".format(keyword_file_name)
 
     # filter out the duplicates in the validation and the testing datasets and the kp20k training dataset itself
     dups_info_datasets = ['kp20k_training', 'kp20k_validation', 'kp20k_testing',
@@ -55,12 +66,12 @@ def filter_dups(saved_home, dups_info_home):
         allkeys_lines[filter_idx] = '\n'
 
     filtered_context_file = open(os.path.join(saved_home, 'data_for_corenlp',
-                                              'kp20k_training_context_for_corenlp_filtered.txt'),
+                                              '{}.txt'.format(filtered_context_file_name)),
                                  'w', encoding='utf-8')
     filtered_context_file.writelines(context_lines)
 
     filtered_allkeys_file = open(os.path.join(saved_home, 'data_for_corenlp',
-                                              'kp20k_training_keyword_for_corenlp_filtered.txt'),
+                                              '{}.txt'.format(filtered_keyword_file_name)),
                                  'w', encoding='utf-8')
     filtered_allkeys_file.writelines(allkeys_lines)
 
@@ -73,10 +84,14 @@ def filter_dups(saved_home, dups_info_home):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='integrated_data_preprocess')
-    parser.add_argument('-saved_home', type=str,
+    parser.add_argument('-saved_home', type=str, default='process_json/integrated_processed_data')
+    parser.add_argument('-context_file_path', type=str,
                         default='process_json/integrated_processed_data')
+    parser.add_argument('-keyword_file_path', type=str,
+                        default='process_json/integrated_processed_data')
+
     parser.add_argument('-dups_info_home', type=str,
                         default='process_json/duplicates_w_kp20k_training')
     opts = parser.parse_args()
+    filter_dups(saved_home=opts.saved_home, dups_info_home=opts.dups_info_home, context_file=opts.context_file, keyword_file=opts.keyword_file)
 
-    filter_dups(saved_home=opts.saved_home, dups_info_home=opts.dups_info_home)
