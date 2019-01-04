@@ -514,6 +514,8 @@ if __name__ == '__main__':
                         help='Whether to extract an acronym from the ending parenthesis.')
     parser.add_argument('-use_corenlp', action='store_true',
                         help='Whether to use stanford corenlp tokenizing')
+    parser.add_argument('-corenlp_home', type=str, default='/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/',
+                        help='Whether to use stanford corenlp tokenizing')
 
     opts = parser.parse_args()
 
@@ -528,7 +530,8 @@ if __name__ == '__main__':
     #
     if opts.use_corenlp:
         # CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2016-10-31')
-        CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
+        # CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
+        CoreNLP = StanfordCoreNLP(r'{}'.format(opts.corenlp_home))
 
     if opts.match_ending_parenthesis:
         ending_parenthesis_output_path = os.path.join(opts.json_home, "{}_{}_ending_parenthesis_output.txt".format(opts.dataset, opts.data_type))
