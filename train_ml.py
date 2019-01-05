@@ -211,6 +211,9 @@ def train_one_batch(batch, model, optimizer, opt, batch_i, source_representation
                 source_representation_samples_2dlist.append(source_representation_samples_list)
                 # store the idx of place-holder for that batch
                 source_representation_target_list.append(place_holder_idx)
+    else:
+        source_representation_samples_2dlist = None
+        source_representation_target_list = None
 
         """
         if encoder_representation_samples_2dlist[0] is None and batch_i > math.ceil(

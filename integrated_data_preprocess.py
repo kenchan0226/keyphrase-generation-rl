@@ -28,6 +28,7 @@ def check_present_idx(src_str, keyphrase_str_list):
     num_keyphrases = len(keyphrase_str_list)
     is_present = np.zeros(num_keyphrases, dtype=bool)
     src_len = len(src_str)
+    num_present_keyphrases = 0
 
     present_indices = np.ones(num_keyphrases) * (src_len+1)
 
@@ -47,11 +48,12 @@ def check_present_idx(src_str, keyphrase_str_list):
                         break
                 if match:
                     present_indices[i] = src_start_idx
+                    num_present_keyphrases += 1
                     break
             if not match:
                 present_indices[i] = src_len + 1
 
-    return present_indices
+    return present_indices, num_present_keyphrases
 
 
 def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_parenthesis, use_corenlp):
@@ -225,7 +227,7 @@ def get_tokens(text, fine_grad=True, use_corenlp=True):
     return tokens
 
 
-def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False, limit_num=True, fine_grad=True, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True):
+def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False, limit_num=True, fine_grad=True, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True, separate_present_absent=False):
     if variations and sort_keyphrases:
         raise ValueError("You cannot use sort_keyphrases when you need to find the variations of each keyphrase")
     # remove question mark
@@ -274,23 +276,30 @@ def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False,
                     keyphrase_list.append(keyphrase)
 
     if sort_keyphrases:
-        keyphrase_list = sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyphrase_token_2dlist)
+        keyphrase_list = sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyphrase_token_2dlist, separate_present_absent)
 
     # a list of keyphrase str
     return keyphrase_list
 
 
-def sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyphrase_token_2dlist):
+def sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyphrase_token_2dlist, separate_present_absent):
+    num_keyphrase = len(keyphrase_list)
+    assert num_keyphrase == len(keyphrase_token_2dlist)
     # stem the token list and check the present idx
     src_tokens_stemmed = string_helper.stem_word_list(src_tokens)
     keyphrase_token_2dlist_stemmed = string_helper.stem_str_list(keyphrase_token_2dlist)
-    present_idx_array = check_present_idx(src_tokens_stemmed, keyphrase_token_2dlist_stemmed)
+    present_idx_array, num_present_keyphrases = check_present_idx(src_tokens_stemmed, keyphrase_token_2dlist_stemmed)
     # rearrange the order in keyphrase list
     sorted_keyphrase_indices = np.argsort(present_idx_array)
-    return [keyphrase_list[idx] for idx in sorted_keyphrase_indices]
+    sorted_keyphrase_list = [keyphrase_list[idx] for idx in sorted_keyphrase_indices]
+    present_absent_segmenter = "<PEOS>"
+    if separate_present_absent:
+        sorted_keyphrase_list.insert(num_present_keyphrases, present_absent_segmenter)
+    return sorted_keyphrase_list
+    #return [keyphrase_list[idx] for idx in sorted_keyphrase_indices]
 
 
-def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=True, use_orig_keys=False, variations=False, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True):
+def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=True, use_orig_keys=False, variations=False, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True, separate_present_absent=False):
     """
     process the original json file into a txt file for corenlp tokenizing
     :param json_home: the home directory of the json files of KP20k
@@ -322,6 +331,8 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
         processed_files_suffix += "_sorted"
     if match_ending_parenthesis:
         processed_files_suffix += "_parenthesis"
+    if separate_present_absent:
+        processed_files_suffix += "_separated"
 
     processed_keyword_file = open(os.path.join(saved_data_dir, "{}_{}_keyword_for_corenlp{}.txt".format(dataset, data_type, processed_files_suffix)),
                                   'w', encoding='utf-8')
@@ -357,7 +368,8 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
             keywords = ';'.join(
                 process_keyphrase(keywords, context_tokens, keyphrase_stat, variations=variations, limit_num=limit_num,
                                   fine_grad=fine_grad, sort_keyphrases=sort_keyphrases,
-                                  match_ending_parenthesis=match_ending_parenthesis, use_corenlp=use_corenlp))
+                                  match_ending_parenthesis=match_ending_parenthesis, use_corenlp=use_corenlp,
+                                  separate_present_absent=separate_present_absent))
         else:
             keywords = ';'.join(keywords.strip().split(';'))
 
@@ -377,6 +389,7 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
     if match_ending_parenthesis:
         print("# num extracted acronyms: {}".format(keyphrase_stat['num_extracted_acronym']))
     # keyphrase_stat = {'num_keyphrases_with_variations': 0, 'num_keyphrases': 0, 'num_variations': 0, 'num_keyphrases_with_match_disambiguation': 0}
+
 
 def filter_dups(saved_home, dups_info_home):
     """
@@ -516,6 +529,8 @@ if __name__ == '__main__':
                         help='Whether to use stanford corenlp tokenizing')
     parser.add_argument('-corenlp_home', type=str, default='/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/',
                         help='Whether to use stanford corenlp tokenizing')
+    parser.add_argument('-separate_present_absent', action='store_true',
+                        help='Whether to separate present and absent keyphrase using another token.')
 
     opts = parser.parse_args()
 
@@ -537,10 +552,15 @@ if __name__ == '__main__':
         ending_parenthesis_output_path = os.path.join(opts.json_home, "{}_{}_ending_parenthesis_output.txt".format(opts.dataset, opts.data_type))
         # processed_keyword_file = open(os.path.join(saved_data_dir, "{}_{}_keyword_for_corenlp.txt".format(dataset, data_type)), 'w', encoding='utf-8')
 
+    if opts.separate_present_absent:
+        present_absent_segmenter = "<PEOS>"
+        if not opts.sort_keyphrases:
+            raise ValueError("If you want to separate present keyphrase and basent keyphrase, you must specify the option -sort_keyphrases.")
+
     json2txt_for_corenlp(json_home=opts.json_home, dataset=opts.dataset, data_type=opts.data_type, saved_home=opts.saved_home,
                          fine_grad=opts.fine_grad, use_orig_keys=opts.use_orig_keys, variations=opts.variations,
                          sort_keyphrases=opts.sort_keyphrases, match_ending_parenthesis=opts.match_ending_parenthesis,
-                         use_corenlp=opts.use_corenlp)
+                         use_corenlp=opts.use_corenlp, separate_present_absent=opts.separate_present_absent)
 
     # 2. filter out the duplicates in the kp20k training data
     # filter_dups(saved_home=opts.saved_home, dups_info_home=opts.dups_info_home)
