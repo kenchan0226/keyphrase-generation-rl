@@ -292,7 +292,6 @@ def sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyp
     # rearrange the order in keyphrase list
     sorted_keyphrase_indices = np.argsort(present_idx_array)
     sorted_keyphrase_list = [keyphrase_list[idx] for idx in sorted_keyphrase_indices]
-    present_absent_segmenter = "<PEOS>"
     if separate_present_absent:
         sorted_keyphrase_list.insert(num_present_keyphrases, present_absent_segmenter)
     return sorted_keyphrase_list
