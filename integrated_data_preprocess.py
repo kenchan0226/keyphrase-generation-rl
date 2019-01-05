@@ -553,7 +553,7 @@ if __name__ == '__main__':
         # processed_keyword_file = open(os.path.join(saved_data_dir, "{}_{}_keyword_for_corenlp.txt".format(dataset, data_type)), 'w', encoding='utf-8')
 
     if opts.separate_present_absent:
-        present_absent_segmenter = "<PEOS>"
+        present_absent_segmenter = "<peos>"
         if not opts.sort_keyphrases:
             raise ValueError("If you want to separate present keyphrase and basent keyphrase, you must specify the option -sort_keyphrases.")
 
