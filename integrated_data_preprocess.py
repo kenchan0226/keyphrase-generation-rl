@@ -19,7 +19,7 @@ MAX_KEYWORD_LEN = 6
 PRINTABLE = set(string.printable)
 
 
-def check_present_idx(src_str, keyphrase_str_list):
+def batch_check_present_idx_backup(src_str, keyphrase_str_list):
     """
     :param src_str: stemmed word list of source text
     :param keyphrase_str_list: stemmed list of word list
@@ -54,6 +54,49 @@ def check_present_idx(src_str, keyphrase_str_list):
                 present_indices[i] = src_len + 1
 
     return present_indices, num_present_keyphrases
+
+
+def batch_check_present_idx(src_str, keyphrase_str_list):
+    """
+    :param src_str: stemmed word list of source text
+    :param keyphrase_str_list: stemmed list of word list
+    :return: an np array that stores the keyphrase's start idx in the src if it present in src. else, the value is len(src) +1
+    """
+    num_keyphrases = len(keyphrase_str_list)
+    src_len = len(src_str)
+    num_present_keyphrases = 0
+
+    present_indices = np.ones(num_keyphrases) * (src_len+1)
+
+    for i, keyphrase_word_list in enumerate(keyphrase_str_list):
+        present_indices[i], is_present = check_present_idx(src_str, keyphrase_word_list)
+        if is_present:
+            num_present_keyphrases += 1
+
+    return present_indices, num_present_keyphrases
+
+
+def check_present_idx(src_str, keyphrase_word_list):
+    src_len = len(src_str)
+    joined_keyphrase_str = ' '.join(keyphrase_word_list)
+    if joined_keyphrase_str.strip() == "":  # if the keyphrase is an empty string, treat it as absent
+        return src_len + 1, False
+    else:
+        # check if it appears in source text
+        match = False
+        for src_start_idx in range(len(src_str) - len(keyphrase_word_list) + 1):
+            match = True
+            for keyphrase_i, keyphrase_w in enumerate(keyphrase_word_list):
+                src_w = src_str[src_start_idx + keyphrase_i]
+                if src_w != keyphrase_w:
+                    match = False
+                    break
+            if match:
+                present_index = src_start_idx
+                break
+        if not match:
+            present_index = src_len + 1
+    return present_index, match
 
 
 def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_parenthesis, use_corenlp, find_redirections):
@@ -289,7 +332,7 @@ def sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyp
     # stem the token list and check the present idx
     src_tokens_stemmed = string_helper.stem_word_list(src_tokens)
     keyphrase_token_2dlist_stemmed = string_helper.stem_str_list(keyphrase_token_2dlist)
-    present_idx_array, num_present_keyphrases = check_present_idx(src_tokens_stemmed, keyphrase_token_2dlist_stemmed)
+    present_idx_array, num_present_keyphrases = batch_check_present_idx(src_tokens_stemmed, keyphrase_token_2dlist_stemmed)
     # rearrange the order in keyphrase list
     sorted_keyphrase_indices = np.argsort(present_idx_array)
     sorted_keyphrase_list = [keyphrase_list[idx] for idx in sorted_keyphrase_indices]

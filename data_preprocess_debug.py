@@ -19,7 +19,7 @@ def check_present_idx_debug():
     print(source_tokens)
     src_len = len(source_tokens)
     print(src_len)
-    print(check_present_idx(source_tokens, keyphrase_list_tokenized))
+    print(batch_check_present_idx(source_tokens, keyphrase_list_tokenized))
     return
 
 
@@ -81,7 +81,7 @@ def process_keyphrase_debug_sort_keyphrases():
 
 if __name__ == '__main__':
     #process_keyphrase_debug_with_variation()
-    #check_present_idx_debug()
-    sort_keyphrases_by_their_order_of_occurence_debug()
+    check_present_idx_debug()
+    #sort_keyphrases_by_their_order_of_occurence_debug()
     #process_keyphrase_debug_sort_keyphrases()
 
