@@ -370,6 +370,8 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
     processed_files_suffix = ""
     if variations:
         processed_files_suffix += "_variations"
+    if find_redirections:
+        processed_files_suffix += "_redirections"
     if sort_keyphrases:
         processed_files_suffix += "_sorted"
     if match_ending_parenthesis:
