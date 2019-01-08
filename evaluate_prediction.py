@@ -49,6 +49,10 @@ def compute_extra_one_word_seqs_mask(str_list):
 
 
 def check_duplicate_keyphrases(keyphrase_str_list):
+    """
+    :param keyphrase_str_list: a 2d list of tokens
+    :return: a boolean np array indicate, 1 = unique, 0 = duplicate
+    """
     num_keyphrases = len(keyphrase_str_list)
     not_duplicate = np.ones(num_keyphrases, dtype=bool)
     keyphrase_set = set()
@@ -59,6 +63,45 @@ def check_duplicate_keyphrases(keyphrase_str_list):
             not_duplicate[i] = True
         keyphrase_set.add('_'.join(keyphrase_word_list))
     return not_duplicate
+
+
+def check_present_keyphrases(src_str, keyphrase_str_list, match_by_str=False):
+    """
+    :param src_str: stemmed word list of source text
+    :param keyphrase_str_list: stemmed list of word list
+    :return:
+    """
+    num_keyphrases = len(keyphrase_str_list)
+    is_present = np.zeros(num_keyphrases, dtype=bool)
+
+    for i, keyphrase_word_list in enumerate(keyphrase_str_list):
+        joined_keyphrase_str = ' '.join(keyphrase_word_list)
+
+        if joined_keyphrase_str.strip() == "":  # if the keyphrase is an empty string
+            is_present[i] = False
+        else:
+            if not match_by_str:  # match by word
+                # check if it appears in source text
+                match = False
+                for src_start_idx in range(len(src_str) - len(keyphrase_word_list) + 1):
+                    match = True
+                    for keyphrase_i, keyphrase_w in enumerate(keyphrase_word_list):
+                        src_w = src_str[src_start_idx + keyphrase_i]
+                        if src_w != keyphrase_w:
+                            match = False
+                            break
+                    if match:
+                        break
+                if match:
+                    is_present[i] = True
+                else:
+                    is_present[i] = False
+            else:  # match by str
+                if joined_keyphrase_str in ' '.join(src_str):
+                    is_present[i] = True
+                else:
+                    is_present[i] = False
+    return is_present
 
 
 def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list, match_by_str=False):
@@ -568,6 +611,93 @@ def average_precision_at_ks(r, k_list, num_predictions, num_trgs):
     return average_precision_array[return_indices]
 
 
+def update_score_dict(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed, k_list, score_dict, tag):
+    num_targets = len(trg_token_2dlist_stemmed)
+    num_predictions = len(pred_token_2dlist_stemmed)
+
+    is_match = compute_match_result(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed,
+                                        type='exact', dimension=1)
+    is_match_substring_2d = compute_match_result(trg_token_2dlist_stemmed,
+                                                 pred_token_2dlist_stemmed, type='sub', dimension=2)
+    # Classification metrics
+    precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks = \
+        compute_classification_metrics_at_ks(is_match, num_predictions, num_targets, k_list=k_list)
+
+    # Ranking metrics
+    ndcg_ks, dcg_ks = ndcg_at_ks(is_match, k_list=k_list, method=1, include_dcg=True)
+    alpha_ndcg_ks, alpha_dcg_ks = alpha_ndcg_at_ks(is_match_substring_2d, k_list=k_list, method=1,
+                                                   alpha=0.5, include_dcg=True)
+    ap_ks = average_precision_at_ks(is_match, k_list=k_list,
+                                    num_predictions=num_predictions, num_trgs=num_targets)
+
+    for topk, precision_k, recall_k, f1_k, num_matches_k, num_predictions_k, ndcg_k, dcg_k, alpha_ndcg_k, alpha_dcg_k, ap_k in \
+            zip(k_list, precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks, ndcg_ks, dcg_ks,
+                alpha_ndcg_ks, alpha_dcg_ks, ap_ks):
+        score_dict['precision@{}_{}'.format(topk, tag)].append(precision_k)
+        score_dict['recall@{}_{}'.format(topk, tag)].append(recall_k)
+        score_dict['f1_score@{}_{}'.format(topk, tag)].append(f1_k)
+        score_dict['num_matches@{}_{}'.format(topk, tag)].append(num_matches_k)
+        score_dict['num_predictions@{}_{}'.format(topk, tag)].append(num_predictions_k)
+        score_dict['num_targets@{}_{}'.format(topk, tag)].append(num_targets)
+        score_dict['AP@{}_{}'.format(topk, tag)].append(ap_k)
+        score_dict['NDCG@{}_{}'.format(topk, tag)].append(ndcg_k)
+        score_dict['AlphaNDCG@{}_{}'.format(topk, tag)].append(alpha_ndcg_k)
+    return score_dict
+
+
+def filter_prediction(disable_valid_filter, disable_extra_one_word_filter, pred_token_2dlist_stemmed, pred_token_2d_list):
+    """
+    Remove the duplicate predictions, can optionally remove invalid predictions and extra one word predictions
+    :param disable_valid_filter:
+    :param disable_extra_one_word_filter:
+    :param pred_token_2dlist_stemmed:
+    :param pred_token_2d_list:
+    :return:
+    """
+    num_predictions = len(pred_token_2d_list)
+    is_unique_mask = check_duplicate_keyphrases(pred_token_2dlist_stemmed)  # boolean array, 1=unqiue, 0=duplicate
+    pred_filter = is_unique_mask
+    if not disable_valid_filter:
+        is_valid_mask = check_valid_keyphrases(pred_token_2d_list)
+        pred_filter = pred_filter * is_valid_mask
+    if not disable_extra_one_word_filter:
+        extra_one_word_seqs_mask, num_one_word_seqs = compute_extra_one_word_seqs_mask(pred_token_2d_list)
+        pred_filter = pred_filter * extra_one_word_seqs_mask
+    filtered_stemmed_pred_str_list = [word_list for word_list, is_keep in
+                                          zip(pred_token_2dlist_stemmed, pred_filter) if
+                                          is_keep]
+    num_duplicated_predictions = num_predictions - np.sum(is_unique_mask)
+    return filtered_stemmed_pred_str_list, num_duplicated_predictions
+
+
+def find_unique_target(trg_token_2dlist_stemmed):
+    """
+    Remove the duplicate targets
+    :param trg_token_2dlist_stemmed:
+    :return:
+    """
+    num_trg = len(trg_token_2dlist_stemmed)
+    is_unique_mask = check_duplicate_keyphrases(trg_token_2dlist_stemmed)  # boolean array, 1=unqiue, 0=duplicate
+    trg_filter = is_unique_mask
+    filtered_stemmed_trg_str_list = [word_list for word_list, is_keep in
+                                      zip(trg_token_2dlist_stemmed, trg_filter) if
+                                      is_keep]
+    num_duplicated_trg = num_trg - np.sum(is_unique_mask)
+    return filtered_stemmed_trg_str_list, num_duplicated_trg
+
+
+def separate_present_absent(src_token_list_stemmed, keyphrase_token_2dlist_stemmed, match_by_str):
+    is_present_mask = check_present_keyphrases(src_token_list_stemmed, keyphrase_token_2dlist_stemmed, match_by_str)
+    present_keyphrase_token2dlist = []
+    absent_keyphrase_token2dlist = []
+    for keyphrase_token_list, is_present in zip(keyphrase_token_2dlist_stemmed, is_present_mask):
+        if is_present:
+            present_keyphrase_token2dlist.append(keyphrase_token_list)
+        else:
+            absent_keyphrase_token2dlist.append(keyphrase_token_list)
+    return present_keyphrase_token2dlist, absent_keyphrase_token2dlist
+
+
 def main(opt):
     src_file_path = opt.src_file_path
     trg_file_path = opt.trg_file_path
@@ -576,256 +706,93 @@ def main(opt):
     if opt.export_filtered_pred:
         pred_output_file = open(os.path.join(opt.filtered_pred_path, "predictions_filtered.txt"), "w")
 
-    # {'precision@5':[],'recall@5':[],'f1_score@5':[],'num_matches@5':[],'precision@10':[],'recall@10':[],'f1score@10':[],'num_matches@10':[]}
     score_dict = defaultdict(list)
     topk_dict = {'present': [5, 10, 'M'], 'absent': [5, 10, 50, 'M'], 'all': [5, 10, 'M']}
     num_src = 0
     num_unique_predictions = 0
-    num_unique_present_predictions = 0
-    num_unique_absent_predictions = 0
-    num_unique_present_filtered_predictions = 0
-    num_unique_present_filtered_targets = 0
-    num_unique_absent_filtered_predictions = 0
-    num_unique_absent_filtered_targets = 0
+    num_present_filtered_predictions = 0
+    num_present_unique_targets = 0
+    num_absent_filtered_predictions = 0
+    num_absent_unique_targets = 0
     max_unique_targets = 0
 
     for data_idx, (src_l, trg_l, pred_l) in enumerate(zip(open(src_file_path), open(trg_file_path), open(pred_file_path))):
         num_src += 1
+        # convert the str to token list
         pred_str_list = pred_l.strip().split(';')
         pred_str_list = pred_str_list[:opt.num_preds]
-        pred_str_list = [pred_str.split(' ') for pred_str in pred_str_list]
+        pred_token_2dlist = [pred_str.split(' ') for pred_str in pred_str_list]
         trg_str_list = trg_l.strip().split(';')
-        trg_str_list = [trg_str.split(' ') for trg_str in trg_str_list]
+        trg_token_2dlist = [trg_str.split(' ') for trg_str in trg_str_list]
         [title, context] = src_l.strip().split('<eos>')
-        src_str = title.strip().split(' ') + context.strip().split(' ')
-        stemmed_src_str = stem_word_list(src_str)
-        stemmed_trg_str_list = stem_str_list(trg_str_list)
-        stemmed_pred_str_list = stem_str_list(pred_str_list)
+        src_token_list = title.strip().split(' ') + context.strip().split(' ')
 
-        # is_present: boolean np array indicate whether a predicted keyphrase is present in src
-        # not_duplicate: boolean np array indicate
-        trg_str_is_present, trg_str_not_duplicate = check_present_and_duplicate_keyphrases(stemmed_src_str,
-                                                                                           stemmed_trg_str_list, opt.match_by_str)
-        current_unique_targets = sum(trg_str_not_duplicate)
+        num_predictions = len(pred_str_list)
+
+        # perform stemming
+        stemmed_src_token_list = stem_word_list(src_token_list)
+        stemmed_trg_token_2dlist = stem_str_list(trg_token_2dlist)
+        stemmed_pred_token_2dlist = stem_str_list(pred_token_2dlist)
+
+        # Filter out duplicate, invalid, and extra one word predictions
+        filtered_stemmed_pred_token_2dlist, num_duplicated_predictions = filter_prediction(opt.disable_valid_filter, opt.disable_extra_one_word_filter, stemmed_pred_token_2dlist, pred_token_2dlist)
+        num_unique_predictions += (num_predictions - num_duplicated_predictions)
+
+        # Remove duplicated targets
+        unique_stemmed_trg_token_2dlist, num_duplicated_trg = find_unique_target(stemmed_trg_token_2dlist)
+        max_unique_targets += (num_predictions - num_duplicated_trg)
+
+        current_unique_targets = len(unique_stemmed_trg_token_2dlist)
         if current_unique_targets > max_unique_targets:
             max_unique_targets = current_unique_targets
 
-        # a pred_seq is invalid if len(processed_seq) == 0 or keep_flag and any word in processed_seq is UNK or it contains '.' or ','
-        if not opt.disable_valid_filter:
-            pred_str_is_valid = check_valid_keyphrases(pred_str_list)
-        else:
-            pred_str_is_valid = dummy_filter(pred_str_list)
-        # pred_str_is_valid, processed_pred_seq_list, processed_pred_str_list, processed_pred_score_list = process_predseqs(pred_seq_list, oov, opt.idx2word, opt)
+        # separate present and absent keyphrases
+        present_filtered_stemmed_pred_token_2dlist, absent_filtered_stemmed_pred_token_2dlist = separate_present_absent(stemmed_src_token_list, filtered_stemmed_pred_token_2dlist, opt.match_by_str)
+        present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent(stemmed_src_token_list, unique_stemmed_trg_token_2dlist, opt.match_by_str)
+        num_present_filtered_predictions += len(present_filtered_stemmed_pred_token_2dlist)
+        num_present_unique_targets += len(present_unique_stemmed_trg_token_2dlist)
+        num_absent_filtered_predictions += len(absent_filtered_stemmed_pred_token_2dlist)
+        num_absent_unique_targets += len(absent_unique_stemmed_trg_token_2dlist)
 
-        # a list of boolean indicates which predicted keyphrases present in src, for the duplicated keyphrases after stemming, only consider the first one
-        pred_str_is_present, pred_str_not_duplicate = check_present_and_duplicate_keyphrases(stemmed_src_str,
-                                                                                             stemmed_pred_str_list, opt.match_by_str)
-        num_unique_predictions += sum(pred_str_not_duplicate)
-
-        # Only keep the first one-word prediction, remove all the remaining keyphrases that only has one word.
-        if not opt.disable_extra_one_word_filter:
-            extra_one_word_seqs_mask, num_one_word_seqs = compute_extra_one_word_seqs_mask(pred_str_list)
-        else:
-            extra_one_word_seqs_mask = dummy_filter(pred_str_list)
-
-        tmp_trg_str_filter = trg_str_not_duplicate
-        tmp_pred_str_filter = pred_str_not_duplicate * pred_str_is_valid * extra_one_word_seqs_mask
-
-        # Compute metrics for all the keyphrases including both present and absent
-        filtered_stemmed_trg_str_list_all = [word_list for word_list, is_keep in
-                                         zip(stemmed_trg_str_list, tmp_trg_str_filter)
-                                         if
-                                         is_keep]
-        filtered_stemmed_pred_str_list_all = [word_list for word_list, is_keep in
-                                          zip(stemmed_pred_str_list, tmp_pred_str_filter) if
-                                          is_keep]
-        num_filtered_targets_all = len(filtered_stemmed_trg_str_list_all)
-        num_filtered_predictions_all = len(filtered_stemmed_pred_str_list_all)
-
-        is_match_all = compute_match_result(filtered_stemmed_trg_str_list_all, filtered_stemmed_pred_str_list_all, type='exact', dimension=1)
-        is_match_substring_2d_all = compute_match_result(filtered_stemmed_trg_str_list_all, filtered_stemmed_pred_str_list_all, type='sub', dimension=2)
-
-        precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks = \
-            compute_classification_metrics_at_ks(is_match_all, num_filtered_predictions_all, num_filtered_targets_all, k_list=topk_dict['all'])
-
-        if not opt.disable_ranking_metrics:
-            ndcg_ks, dcg_ks = ndcg_at_ks(is_match_all, k_list=topk_dict['all'], method=1, include_dcg=True)
-            alpha_ndcg_ks, alpha_dcg_ks = alpha_ndcg_at_ks(is_match_substring_2d_all, k_list=topk_dict['all'], method=1, alpha=0.5, include_dcg=True)
-            ap_ks = average_precision_at_ks(is_match_all, k_list=topk_dict['all'], num_predictions=num_filtered_predictions_all, num_trgs=num_filtered_targets_all)
-
-        for topk, precision_k, recall_k, f1_k, num_matches_k, num_predictions_k, ndcg_k, dcg_k, alpha_ndcg_k, alpha_dcg_k, ap_k in \
-                zip(topk_dict['all'], precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks, ndcg_ks, dcg_ks, alpha_ndcg_ks, alpha_dcg_ks, ap_ks):
-            score_dict['precision@{}_all'.format(topk)].append(precision_k)
-            score_dict['recall@{}_all'.format(topk)].append(recall_k)
-            score_dict['f1_score@{}_all'.format(topk)].append(f1_k)
-            score_dict['num_matches@{}_all'.format(topk)].append(num_matches_k)
-            score_dict['num_predictions@{}_all'.format(topk)].append(num_predictions_k)
-            score_dict['num_targets@{}_all'.format(topk)].append(num_filtered_targets_all)
-            if not opt.disable_ranking_metrics:
-                score_dict['AP@{}_all'.format(topk)].append(ap_k)
-                #score_dict['DCG@{}_all'.format(topk)].append(dcg_k)
-                score_dict['NDCG@{}_all'.format(topk)].append(ndcg_k)
-                #score_dict['AlphaDCG@{}_all'.format(topk)].append(alpha_dcg_k)
-                score_dict['AlphaNDCG@{}_all'.format(topk)].append(alpha_ndcg_k)
-
-
-        # Filter for present keyphrase prediction
-        trg_str_filter_present = tmp_trg_str_filter * trg_str_is_present
-        pred_str_filter_present = tmp_pred_str_filter * pred_str_is_present
-
-        # Filter for absent keyphrase prediction
-        trg_str_filter_absent = tmp_trg_str_filter * np.invert(trg_str_is_present)
-        pred_str_filter_absent = tmp_pred_str_filter * np.invert(pred_str_is_present)
-
-        # Increment num of unique predictions for present and absent keyphrases
-        num_unique_present_predictions += sum(pred_str_not_duplicate * pred_str_is_present)
-        num_unique_absent_predictions += sum(pred_str_not_duplicate * np.invert(pred_str_is_present))
-
-        # A list to store all the predicted keyphrases after filtering for both present and absent keyphrases
-        filtered_pred_dict = {"present": None, "absent": None}
-
-        for is_present in [True, False]:
-            if is_present:
-                present_tag = "present"
-                trg_str_filter = trg_str_filter_present
-                pred_str_filter = pred_str_filter_present
-            else:
-                present_tag = "absent"
-                trg_str_filter = trg_str_filter_absent
-                pred_str_filter = pred_str_filter_absent
-
-            # Apply filter to
-            filtered_trg_str_list = [word_list for word_list, is_keep in zip(trg_str_list, trg_str_filter) if
-                                     is_keep]
-            filtered_stemmed_trg_str_list = [word_list for word_list, is_keep in
-                                             zip(stemmed_trg_str_list, trg_str_filter)
-                                             if
-                                             is_keep]
-
-            filtered_pred_str_list = [word_list for word_list, is_keep in zip(pred_str_list, pred_str_filter) if
-                                      is_keep]
-            filtered_stemmed_pred_str_list = [word_list for word_list, is_keep in
-                                              zip(stemmed_pred_str_list, pred_str_filter) if
-                                              is_keep]
-            #filtered_pred_score_list = [score for score, is_keep in zip(pred_score_list, pred_str_filter) if is_keep]
-            #filtered_pred_attn_list = [attn for attn, is_keep in zip(pred_attn_list, pred_str_filter) if is_keep]
-
-            filtered_pred_dict[present_tag] = filtered_pred_str_list
-
-            # A boolean np array indicates whether each prediction match the target after stemming
-            is_match = compute_match_result(trg_str_list=filtered_stemmed_trg_str_list, pred_str_list=filtered_stemmed_pred_str_list)
-            #is_match_2d = compute_match_result(filtered_stemmed_trg_str_list, filtered_stemmed_pred_str_list, type='exact', dimension=2)
-            #is_match = np.sum(is_match_2d, axis=0)
-            is_match_substring_2d = compute_match_result(trg_str_list=filtered_stemmed_trg_str_list, pred_str_list=filtered_stemmed_pred_str_list, type='sub', dimension=2)
-
-            num_filtered_predictions = len(filtered_pred_str_list)
-            num_filtered_targets = len(filtered_trg_str_list)
-            if is_present:
-                num_unique_present_filtered_predictions += num_filtered_predictions
-                num_unique_present_filtered_targets += num_filtered_targets
-            else:
-                num_unique_absent_filtered_predictions += num_filtered_predictions
-                num_unique_absent_filtered_targets += num_filtered_targets
-
-            precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks = \
-                compute_classification_metrics_at_ks(is_match, num_filtered_predictions,
-                                                    num_filtered_targets, k_list=topk_dict[present_tag])
-
-            if not opt.disable_ranking_metrics:
-                ndcg_ks, dcg_ks = ndcg_at_ks(is_match, k_list=topk_dict[present_tag], method=1, include_dcg=True)
-                alpha_ndcg_ks, alpha_dcg_ks = alpha_ndcg_at_ks(is_match_substring_2d, k_list=topk_dict[present_tag], method=1,
-                                                               alpha=0.5, include_dcg=True)
-                ap_ks = average_precision_at_ks(is_match, k_list=topk_dict[present_tag],
-                                                num_predictions=num_filtered_predictions,
-                                                num_trgs=num_filtered_targets)
-
-            for topk, precision_k, recall_k, f1_k, num_matches_k, num_predictions_k, ndcg_k, dcg_k, alpha_ndcg_k, alpha_dcg_k, ap_k in \
-                    zip(topk_dict[present_tag], precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks, ndcg_ks, dcg_ks, alpha_ndcg_ks, alpha_dcg_ks, ap_ks):
-                score_dict['precision@{}_{}'.format(topk, present_tag)].append(precision_k)
-                score_dict['recall@{}_{}'.format(topk, present_tag)].append(recall_k)
-                score_dict['f1_score@{}_{}'.format(topk, present_tag)].append(f1_k)
-                score_dict['num_matches@{}_{}'.format(topk, present_tag)].append(num_matches_k)
-                score_dict['num_predictions@{}_{}'.format(topk, present_tag)].append(num_predictions_k)
-                score_dict['num_targets@{}_{}'.format(topk, present_tag)].append(num_filtered_targets)
-                if not opt.disable_ranking_metrics:
-                    score_dict['AP@{}_{}'.format(topk, present_tag)].append(ap_k)
-                    #score_dict['DCG@{}_{}'.format(topk, present_tag)].append(dcg_k)
-                    score_dict['NDCG@{}_{}'.format(topk, present_tag)].append(ndcg_k)
-                    #score_dict['AlphaDCG@{}_{}'.format(topk, present_tag)].append(alpha_dcg_k)
-                    score_dict['AlphaNDCG@{}_{}'.format(topk, present_tag)].append(alpha_ndcg_k)
-
+        # compute all the metrics and update the score_dict
+        score_dict = update_score_dict(unique_stemmed_trg_token_2dlist, filtered_stemmed_pred_token_2dlist,
+                                       topk_dict['all'], score_dict, 'all')
+        # compute all the metrics and update the score_dict for present keyphrase
+        score_dict = update_score_dict(present_unique_stemmed_trg_token_2dlist, present_filtered_stemmed_pred_token_2dlist,
+                                       topk_dict['present'], score_dict, 'present')
+        # compute all the metrics and update the score_dict for present keyphrase
+        score_dict = update_score_dict(absent_unique_stemmed_trg_token_2dlist, absent_filtered_stemmed_pred_token_2dlist,
+                                       topk_dict['absent'], score_dict, 'absent')
 
         if opt.export_filtered_pred:
-            pred_print_out = ''
-            # print out present keyphrases, each of them separated by ';', then print ||
-            for word_list_i, word_list in enumerate(filtered_pred_dict['present']):
-                if word_list_i < len(filtered_pred_dict['present']) - 1:
-                    pred_print_out += '%s;' % ' '.join(word_list)
-                else:
-                    pred_print_out += '%s|' % ' '.join(word_list)
-            # print out absent keyphrases, each of them separated by ';',
-            for word_list_i, word_list in enumerate(filtered_pred_dict['absent']):
-                if word_list_i < len(filtered_pred_dict['absent']) - 1:
-                    pred_print_out += '%s;' % ' '.join(word_list)
-                else:
-                    pred_print_out += '%s' % ' '.join(word_list)
-            pred_print_out += '\n'
+            final_pred_str_list = []
+            for word_list in filtered_stemmed_pred_token_2dlist:
+                final_pred_str_list.append(' '.join(word_list))
+            pred_print_out = ';'.join(final_pred_str_list) + '\n'
             pred_output_file.write(pred_print_out)
-
-        if opt.debug:
-            if num_src >= 43:
-                macro_avg_recall_10_absent = float(sum(score_dict['recall@10_absent'])) / float(len(score_dict['recall@10_absent']))
-                micro_avg_recall_10_absent = float(sum(score_dict['num_matches@10_absent'])) / float(sum(score_dict['num_targets@10_absent']))
-                print("macro avg. recall@10: %.5f" % macro_avg_recall_10_absent)
-                print("micro avg. recall@10: %.5f" % micro_avg_recall_10_absent)
-                print(".")
-                break
 
     if opt.export_filtered_pred:
         pred_output_file.close()
 
-    result_txt_str = ""
-    result_list = []
-    result_list_ranking = []
-    field_list = []
-    field_list_ranking = []
+    num_unique_targets = num_present_unique_targets + num_absent_unique_targets
+    num_filtered_predictions = num_present_filtered_predictions + num_absent_filtered_predictions
 
+    result_txt_str = ""
+
+    # report global statistics
     result_txt_str += ('Total #samples: %d\n' % num_src)
+    result_txt_str += ('Max. unique targets per src: %d\n' % (max_unique_targets))
     result_txt_str += ('Total #unique predictions: %d\n' % num_unique_predictions)
 
-    total_num_unique_filtered_predictions = num_unique_present_filtered_predictions+num_unique_absent_filtered_predictions
-    total_num_unique_filtered_targets = num_unique_present_filtered_targets+num_unique_absent_filtered_targets
+    # report statistics and scores for all predictions and targets
+    result_txt_str_all, field_list_all, result_list_all = report_stat_and_scores(num_filtered_predictions, num_unique_targets, num_src, score_dict, topk_dict['all'], 'all')
+    result_txt_str_present, field_list_present, result_list_present = report_stat_and_scores(num_present_filtered_predictions, num_unique_targets, num_src, score_dict, topk_dict['present'], 'present')
+    result_txt_str_absent, field_list_absent, result_list_absent = report_stat_and_scores(num_absent_filtered_predictions, num_unique_targets, num_src, score_dict, topk_dict['absent'], 'absent')
+    result_txt_str += (result_txt_str_all + result_txt_str_present + result_txt_str_absent)
+    field_list = field_list_all + field_list_present + field_list_absent
+    result_list = result_list_all + result_list_present + result_list_absent
 
-    result_txt_str += ('Avg. filtered targets per src: %.2f\n' % (total_num_unique_filtered_targets/num_src))
-    result_txt_str += ('Max. unique targets per src: %d\n' % (max_unique_targets))
-
-    for present_tag in ['all', 'present', 'absent']:
-        if present_tag == "all":
-            num_unique_filtered_predictions = total_num_unique_filtered_predictions
-            num_unique_filtered_targets = total_num_unique_filtered_targets
-        elif present_tag == 'present':
-            num_unique_filtered_predictions = num_unique_present_filtered_predictions
-            num_unique_filtered_targets = num_unique_present_filtered_targets
-        else:  # absent
-            num_unique_filtered_predictions = num_unique_absent_filtered_predictions
-            num_unique_filtered_targets = num_unique_absent_filtered_targets
-
-        result_txt_str += "===================================%s====================================\n" % (present_tag)
-        result_txt_str += "#unique predictions: %d/%d\t#unique targets:%d/%d\n" % \
-                             (num_unique_filtered_predictions, total_num_unique_filtered_predictions, num_unique_filtered_targets, total_num_unique_filtered_targets)
-        classification_output_str, classification_field_list, classification_result_list = report_classification_scores(score_dict, topk_dict[present_tag], present_tag)
-        result_txt_str += classification_output_str
-        field_list += classification_field_list
-        result_list += classification_result_list
-
-        if not opt.disable_ranking_metrics:
-            ranking_output_str, ranking_field_list, ranking_result_list = report_ranking_scores(score_dict, topk_dict[present_tag], present_tag)
-            result_txt_str += ranking_output_str
-            field_list += ranking_field_list
-            result_list += ranking_result_list
-            # field_list_ranking += ranking_field_list
-            #result_list_ranking += ranking_result_list
-
+    # Write to files
     results_txt_file = open(os.path.join(opt.exp_path, "results_log.txt"), "w")
     results_txt_file.write(result_txt_str)
     results_txt_file.close()
@@ -834,14 +801,29 @@ def main(opt):
     results_tsv_file.write('\t'.join(field_list) + '\n')
     results_tsv_file.write('\t'.join('%.5f' % result for result in result_list) + '\n')
     results_tsv_file.close()
-
-    '''
-    results_tsv_file = open(os.path.join(opt.exp_path, "results_log_ranking.tsv"), "w")
-    results_tsv_file.write('\t'.join(field_list_ranking) + '\n')
-    results_tsv_file.write('\t'.join('%.5f' % result for result in result_list_ranking) + '\n')
-    results_tsv_file.close()
-    '''
     return
+
+
+def report_stat_and_scores(num_filtered_predictions, num_unique_trgs, num_src, score_dict, topk_list, present_tag):
+    result_txt_str = "===================================%s====================================\n" % (present_tag)
+    result_txt_str += "#predictions after filtering: %d\t #predictions after filtering per src:%.3f\n" % \
+                      (num_filtered_predictions, num_filtered_predictions / num_src)
+    result_txt_str += "#unique targets: %d\t #unique targets per src:%.3f\n" % \
+                      (num_unique_trgs, num_unique_trgs / num_src)
+
+    classification_output_str, classification_field_list, classification_result_list = report_classification_scores(
+        score_dict, topk_list, present_tag)
+    result_txt_str += classification_output_str
+    field_list = classification_field_list
+    result_list = classification_result_list
+
+    ranking_output_str, ranking_field_list, ranking_result_list = report_ranking_scores(score_dict,
+                                                                                        topk_list,
+                                                                                        present_tag)
+    result_txt_str += ranking_output_str
+    field_list += ranking_field_list
+    result_list += ranking_result_list
+    return result_txt_str, field_list, result_list
 
 
 def report_classification_scores(score_dict, topk_list, present_tag):
@@ -892,7 +874,7 @@ def report_ranking_scores(score_dict, topk_list, present_tag):
         #field_list += ['avg_DCG@{}_{}'.format(topk, present_tag), 'avg_NDCG@{}_{}'.format(topk, present_tag),
         #               'MAP@{}_{}'.format(topk, present_tag), 'AlphaDCG@{}_{}'.format(topk, present_tag), 'AlphaNDCG@{}_{}'.format(topk, present_tag)]
         #result_list += [avg_dcg_k, avg_ndcg_k, map_k, avg_alpha_dcg_k, avg_alpha_ndcg_k]
-        output_str += "\tMAP@{}={:.5}\tNDCG@{}={:.5}\tAlphaNDCG@{}={:.5}".format(topk, map_k, topk, avg_ndcg_k, topk, avg_alpha_ndcg_k)
+        output_str += "\tMAP@{}={:.5}\tNDCG@{}={:.5}\tAlphaNDCG@{}={:.5}\n".format(topk, map_k, topk, avg_ndcg_k, topk, avg_alpha_ndcg_k)
         field_list += ['MAP@{}_{}'.format(topk, present_tag), 'avg_NDCG@{}_{}'.format(topk, present_tag), 'AlphaNDCG@{}_{}'.format(topk, present_tag)]
         result_list += [map_k, avg_ndcg_k, avg_alpha_ndcg_k]
 
