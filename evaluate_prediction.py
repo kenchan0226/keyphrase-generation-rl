@@ -786,8 +786,8 @@ def main(opt):
 
     # report statistics and scores for all predictions and targets
     result_txt_str_all, field_list_all, result_list_all = report_stat_and_scores(num_filtered_predictions, num_unique_targets, num_src, score_dict, topk_dict['all'], 'all')
-    result_txt_str_present, field_list_present, result_list_present = report_stat_and_scores(num_present_filtered_predictions, num_unique_targets, num_src, score_dict, topk_dict['present'], 'present')
-    result_txt_str_absent, field_list_absent, result_list_absent = report_stat_and_scores(num_absent_filtered_predictions, num_unique_targets, num_src, score_dict, topk_dict['absent'], 'absent')
+    result_txt_str_present, field_list_present, result_list_present = report_stat_and_scores(num_present_filtered_predictions, num_present_unique_targets, num_src, score_dict, topk_dict['present'], 'present')
+    result_txt_str_absent, field_list_absent, result_list_absent = report_stat_and_scores(num_absent_filtered_predictions, num_absent_unique_targets, num_src, score_dict, topk_dict['absent'], 'absent')
     result_txt_str += (result_txt_str_all + result_txt_str_present + result_txt_str_absent)
     field_list = field_list_all + field_list_present + field_list_absent
     result_list = result_list_all + result_list_present + result_list_absent
