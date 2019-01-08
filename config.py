@@ -509,8 +509,6 @@ def post_predict_opts(parser):
                         help='Print out the metric at each step or not')
     parser.add_argument('-match_by_str', action="store_true", default=False,
                         help='If false, match the words at word level when checking present keyphrase. Else, match the words at string level.')
-    parser.add_argument('-disable_ranking_metrics', action="store_true", default=False,
-                        help='Print out the metric at each step or not')
     parser.add_argument('-invalidate_unk', action="store_true", default=False,
                         help='Treat unk as invalid output')
 
