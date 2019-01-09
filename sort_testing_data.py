@@ -42,7 +42,7 @@ def sort_keyphrases_with_variations(src_tokens, target_str_list):
 def main(src_file_path, trg_file_path, saved_home):
     trg_file_name = os.path.split(trg_file_path)[1]
     trg_file_name = os.path.splitext(trg_file_name)[0]
-    sorted_trg_file_name = "{}_sorted.txt".format(trg_file_name)
+    sorted_trg_file_name = "{}_sorted_separated.txt".format(trg_file_name)
     sorted_trg_file = open(os.path.join(saved_home, 'data_for_corenlp', sorted_trg_file_name), 'w',  encoding='utf-8')
 
     for src_line, trg_line in zip(open(src_file_path, 'r'), open(trg_file_path, 'r')):
