@@ -135,7 +135,7 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_pa
 
     keyphrase_variations.append(get_tokens(keyphrase_filtered, fine_grad, use_corenlp))
     # find variations from wikipedia, wiki_variations: a list of word list
-    wiki_variations, match_disambiguation_flag = find_variations_from_wiki(keyphrase_filtered, src_tokens, fine_grad, use_corenlp, find_redirections)
+    wiki_variations, match_disambiguation_flag, redirections_flag = find_variations_from_wiki(keyphrase_filtered, src_tokens, fine_grad, use_corenlp, find_redirections)
     keyphrase_variations += wiki_variations
     # remove duplicates
     # keyphrase_variations contains the original keyphrase, the text within a () in the original keyphrase if any, and the variations from wiki
@@ -144,7 +144,7 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_pa
     keyphrase_variations_stemmed = string_helper.stem_str_list(keyphrase_variations)  # a list of word list
     not_duplicate = check_duplicate_keyphrases(keyphrase_variations_stemmed)  # a boolean np array
     keyphrase_variations_unique = [' '.join(v) for v, is_keep in zip(keyphrase_variations, not_duplicate) if is_keep and (not limit_num or len(v) <= MAX_KEYWORD_LEN)]  # ['v11 v12', 'v21 v22']
-    return keyphrase_variations_unique, match_disambiguation_flag, extract_acronym_flag  # 'v11 v12|v21 v22'
+    return keyphrase_variations_unique, match_disambiguation_flag, extract_acronym_flag, redirections_flag  # 'v11 v12|v21 v22'
     #return '|'.join(keyphrase_variations_unique), match_disambiguation_flag, extract_acronym_flag  # 'v11 v12|v21 v22'
 
 
@@ -156,6 +156,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
     """
     wiki_variations = []
     match_disambiguation_flag = False
+    redirections_flag = False
 
     try:
         entity = wikipedia.page(title=keyphrase, auto_suggest=False, redirect=True)
@@ -211,9 +212,13 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
     entity_title_tokens = get_tokens(entity_title.lower(), fine_grad, use_corenlp)  # lowercase and tokenize
     wiki_variations.append(entity_title_tokens)
     if find_redirections:
-        wiki_variations += find_redirected_titles(entity_title, fine_grad, use_corenlp)  # a list of word list
+        titles_that_redirected_to_the_entity = find_redirected_titles(entity_title, fine_grad, use_corenlp)  # a list of word list
+        if len(titles_that_redirected_to_the_entity) > 1:
+            redirections_flag = True
+        wiki_variations += titles_that_redirected_to_the_entity
+        #wiki_variations += find_redirected_titles(entity_title, fine_grad, use_corenlp)  # a list of word list
     # wiki_variations contains the title of the entity as well as the titles that redirected to the entities
-    return wiki_variations, match_disambiguation_flag
+    return wiki_variations, match_disambiguation_flag, redirections_flag
 
 
 def find_redirected_titles(entity_title, fine_grad, use_corenlp):
@@ -289,7 +294,7 @@ def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False,
         if len(keyphrase) > 0:  # if keyphrase is not an empty string
             keyphrase_stat['num_keyphrases'] += 1
             if variations:
-                keyphrase_variations, match_disambiguation_flag, extract_acronym_flag = find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_parenthesis, use_corenlp, find_redirections)  # str of variations, e.g., 'v11 v12|v21 v22'
+                keyphrase_variations, match_disambiguation_flag, extract_acronym_flag, redirections_flag = find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_parenthesis, use_corenlp, find_redirections)  # str of variations, e.g., 'v11 v12|v21 v22'
                 keyphrase_variations_str = '|'.join(keyphrase_variations) # serialize it into a string, each variation is separated by '|', e.g., 'v11 v12|v21 v22'
                 if len(keyphrase_variations) > 0:
                     keyphrase_list.append(keyphrase_variations_str)
@@ -300,6 +305,8 @@ def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False,
                         keyphrase_stat['num_extracted_acronym'] += 1
                     if len(keyphrase_variations) > 1:
                         keyphrase_stat['num_keyphrases_with_variations'] += 1
+                    if redirections_flag:
+                        keyphrase_stat['num_keyphrases_with_redirections'] += 1
 
             else:
                 keyphrase_filtered = re.sub(r'\(.*?\)', '', keyphrase).strip()  # remove text in parenthesis
@@ -352,7 +359,7 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
     :return: None
     """
     keyphrase_stat = {'num_keyphrases_with_variations': 0, 'num_keyphrases': 0, 'num_variations': 0,
-                      'num_keyphrases_with_match_disambiguation': 0, 'num_extracted_acronym': 0}
+                      'num_keyphrases_with_match_disambiguation': 0, 'num_extracted_acronym': 0, 'num_keyphrases_with_redirections': 0}
     #num_keyphrases_with_variations = 0
     #num_keyphrases = 0
     #num_variations = 0
@@ -432,7 +439,9 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
         print("# keyphrases with variations: {}".format(keyphrase_stat['num_keyphrases_with_variations']))
         print("# keyphrases with match disambiguation: {}".format(keyphrase_stat['num_keyphrases_with_match_disambiguation']))
     if match_ending_parenthesis:
-        print("# num extracted acronyms: {}".format(keyphrase_stat['num_extracted_acronym']))
+        print("# extracted acronyms: {}".format(keyphrase_stat['num_extracted_acronym']))
+    if find_redirections:
+        print('# keyphrases with redirections: {}'.format(keyphrase_stat['num_keyphrases_with_redirections']))
     # keyphrase_stat = {'num_keyphrases_with_variations': 0, 'num_keyphrases': 0, 'num_variations': 0, 'num_keyphrases_with_match_disambiguation': 0}
 
 
