@@ -176,13 +176,13 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
         is_present, not_duplicate = check_present_and_duplicate_keyphrases(src_stemmed, possible_titles_stemmed)
         possible_titles_that_present_in_src = [title for title, is_keep in zip(possible_titles, is_present) if is_keep]
         if len(possible_titles_that_present_in_src) == 0:
-            return [], match_disambiguation_flag
+            return [], match_disambiguation_flag, redirections_flag
         else:
             entity_title = possible_titles_that_present_in_src[0]
             match_disambiguation_flag = True
 
     except wikipedia.exceptions.PageError as e:
-        return [], match_disambiguation_flag
+        return [], match_disambiguation_flag, redirections_flag
     except wikipedia.exceptions.WikipediaException as e:
         print(keyphrase)
         print(e)
