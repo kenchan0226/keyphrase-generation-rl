@@ -188,7 +188,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
         print(e)
         exit()
     except KeyError as e:
-        return [], match_disambiguation_flag
+        return [], match_disambiguation_flag, redirections_flag
         """
         if e.args[0] == 'pages':
             return []
