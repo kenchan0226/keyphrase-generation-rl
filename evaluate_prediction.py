@@ -686,7 +686,7 @@ def find_unique_target(trg_token_2dlist_stemmed):
     return filtered_stemmed_trg_str_list, num_duplicated_trg
 
 
-def separate_present_absent(src_token_list_stemmed, keyphrase_token_2dlist_stemmed, match_by_str):
+def separate_present_absent_by_source(src_token_list_stemmed, keyphrase_token_2dlist_stemmed, match_by_str):
     is_present_mask = check_present_keyphrases(src_token_list_stemmed, keyphrase_token_2dlist_stemmed, match_by_str)
     present_keyphrase_token2dlist = []
     absent_keyphrase_token2dlist = []
@@ -695,6 +695,22 @@ def separate_present_absent(src_token_list_stemmed, keyphrase_token_2dlist_stemm
             present_keyphrase_token2dlist.append(keyphrase_token_list)
         else:
             absent_keyphrase_token2dlist.append(keyphrase_token_list)
+    return present_keyphrase_token2dlist, absent_keyphrase_token2dlist
+
+
+def separate_present_absent_by_segmenter(keyphrase_token_2dlist, segmenter):
+    present_keyphrase_token2dlist = []
+    absent_keyphrase_token2dlist = []
+    absent_flag = False
+    for keyphrase_token_list in keyphrase_token_2dlist:
+        if keyphrase_token_list[0] == segmenter:
+            absent_flag = True
+            # skip the segmenter token, because it should not be included in the evaluation
+            continue
+        if absent_flag:
+            absent_keyphrase_token2dlist.append(keyphrase_token_list)
+        else:
+            present_keyphrase_token2dlist.append(keyphrase_token_list)
     return present_keyphrase_token2dlist, absent_keyphrase_token2dlist
 
 
@@ -747,8 +763,11 @@ def main(opt):
             max_unique_targets = current_unique_targets
 
         # separate present and absent keyphrases
-        present_filtered_stemmed_pred_token_2dlist, absent_filtered_stemmed_pred_token_2dlist = separate_present_absent(stemmed_src_token_list, filtered_stemmed_pred_token_2dlist, opt.match_by_str)
-        present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent(stemmed_src_token_list, unique_stemmed_trg_token_2dlist, opt.match_by_str)
+        present_filtered_stemmed_pred_token_2dlist, absent_filtered_stemmed_pred_token_2dlist = separate_present_absent_by_source(stemmed_src_token_list, filtered_stemmed_pred_token_2dlist, opt.match_by_str)
+        if opt.target_separated:
+            present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_source(stemmed_src_token_list, unique_stemmed_trg_token_2dlist, opt.match_by_str)
+        else:
+            present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_segmenter(unique_stemmed_trg_token_2dlist, present_absent_segmenter)
         num_present_filtered_predictions += len(present_filtered_stemmed_pred_token_2dlist)
         num_present_unique_targets += len(present_unique_stemmed_trg_token_2dlist)
         num_absent_filtered_predictions += len(absent_filtered_stemmed_pred_token_2dlist)
@@ -893,6 +912,9 @@ if __name__ == '__main__':
     if opt.exp_path.find('%s') > 0:
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
         opt.filtered_pred_path = opt.filtered_pred_path % (opt.exp, opt.timemark)
+
+    if opt.target_separated:
+        present_absent_segmenter = '<peos>'
 
     if not os.path.exists(opt.exp_path):
         os.makedirs(opt.exp_path)

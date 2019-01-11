@@ -34,7 +34,8 @@ class SequenceGenerator(object):
                  cuda=True,
                  n_best=None,
                  block_ngram_repeat=0,
-                 ignore_when_blocking=[]
+                 ignore_when_blocking=[],
+                 peos_idx=None
                  ):
         """Initializes the generator.
 
@@ -74,6 +75,10 @@ class SequenceGenerator(object):
             self.n_best = self.beam_size
         else:
             self.n_best = n_best
+        self.peos_idx = peos_idx
+
+        if self.model.separate_present_absent:
+            assert self.peos_idx is not None
 
     def beam_search(self, src, src_lens, src_oov, src_mask, oov_lists, word2idx, max_eos_per_output_seq=1):
         """
@@ -113,6 +118,9 @@ class SequenceGenerator(object):
             assert decoder_memory_bank.size() == torch.Size([batch_size * beam_size, 1, self.model.decoder_size])
         else:
             decoder_memory_bank = None
+
+        if self.model.separate_present_absent:
+            is_absent = torch.zeros(batch_size, dtype=torch.uint8)
 
         # expand memory_bank, src_mask
         memory_bank = memory_bank.repeat(beam_size, 1, 1)  # [batch * beam_size, max_src_len, memory_bank_size]
@@ -169,10 +177,20 @@ class SequenceGenerator(object):
                 target_encoder_state = None
                 # decoder_input = y_t
 
+            if self.model.separate_present_absent:
+                # update the is_absent vector
+                for i in range(batch_size):
+                    if decoder_input[i].item() == self.peos_idx:
+                        is_absent[i] = 1
+                if self.model.manager_mode == 1:
+                    goal_vector = self.model.manager(is_absent)
+            else:
+                goal_vector = None
+
             # run one step of decoding
             # [flattened_batch, vocab_size], [dec_layers, flattened_batch, decoder_size], [flattened_batch, memory_bank_size], [flattened_batch, src_len], [flattened_batch, src_len]
             decoder_dist, decoder_state, context, attn_dist, _, coverage = \
-                self.model.decoder(decoder_input, decoder_state, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank, target_encoder_state)
+                self.model.decoder(decoder_input, decoder_state, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank, target_encoder_state, goal_vector)
             log_decoder_dist = torch.log(decoder_dist + EPS)
 
             if self.review_attn:

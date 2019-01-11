@@ -141,6 +141,16 @@ def model_opts(parser):
     parser.add_argument('-lambda_target_encoder', type=float, default=0.03,
                         help='Lambda value for the target encoder loss by Yuan et al.')
 
+    parser.add_argument('-separate_present_absent', action="store_true", default=False,
+                        help='whether to separate present keyphrase predictions and absnet keyphrase predictions as two sub-tasks')
+    parser.add_argument('-manager_mode', type=int, default=1, choices=[1, 2],
+                        help='Only effective in separate_present_absent. 1: two trainable vectors as the goal vectors; 2: Use RNN learn the goal vectors.')
+    parser.add_argument('-goal_vector_size', type=int, default=16,
+                        help='size of goal vector')
+    parser.add_argument('-goal_vector_mode', type=int, default=0, choices=[0, 1, 2],
+                        help='Only effective in separate_present_absent. 0: no goal vector; 1: goal vector act as an extra input to the decoder; 2: goal vector act as an extra input to p_gen')
+
+
     # parser.add_argument('-context_gate', type=str, default=None,
     #                     choices=['source', 'target', 'both'],
     #                     help="""Type of context gate to use.
@@ -511,6 +521,8 @@ def post_predict_opts(parser):
                         help='If false, match the words at word level when checking present keyphrase. Else, match the words at string level.')
     parser.add_argument('-invalidate_unk', action="store_true", default=False,
                         help='Treat unk as invalid output')
+    parser.add_argument('-target_separated', action="store_true", default=False,
+                        help='The targets has already been separated into present keyphrases and absent keyphrases')
 
 
 def interactive_predict_opts(parser):

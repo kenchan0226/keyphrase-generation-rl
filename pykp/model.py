@@ -9,6 +9,7 @@ from pykp.rnn_encoder import RNNEncoder
 from pykp.rnn_decoder import RNNDecoder
 from pykp.target_encoder import TargetEncoder
 from pykp.attention import Attention
+from pykp.manager import ManagerBasic
 
 class Seq2SeqModel(nn.Module):
     """Container module with an encoder, deocder, embeddings."""
@@ -53,6 +54,14 @@ class Seq2SeqModel(nn.Module):
         self.target_encoder_size = opt.target_encoder_size
 
         self.device = opt.device
+
+        self.separate_present_absent = opt.separate_present_absent
+        self.goal_vector_mode = opt.goal_vector_mode
+        self.goal_vector_size = opt.goal_vector_size
+        self.manager_mode = opt.manager_mode
+
+        if self.separate_present_absent:
+            self.peos_idx = opt.word2idx[pykp.io.PEOS_WORD]
 
         '''
         self.attention_mode = opt.attention_mode    # 'dot', 'general', 'concat'
@@ -114,7 +123,9 @@ class Seq2SeqModel(nn.Module):
             attn_mode=self.attn_mode,
             dropout=self.dropout,
             use_target_encoder=self.use_target_encoder,
-            target_encoder_size=self.target_encoder_size
+            target_encoder_size=self.target_encoder_size,
+            goal_vector_mode=self.goal_vector_mode,
+            goal_vector_size=self.goal_vector_size
         )
 
         if self.use_target_encoder:
@@ -133,7 +144,6 @@ class Seq2SeqModel(nn.Module):
                 attn_mode="general"
             )
 
-
         if self.bridge == 'dense':
             self.bridge_layer = nn.Linear(self.encoder_size * self.num_directions, self.decoder_size)
         elif opt.bridge == 'dense_nonlinear':
@@ -143,6 +153,17 @@ class Seq2SeqModel(nn.Module):
 
         if self.bridge == 'copy':
             assert self.encoder_size * self.num_directions == self.decoder_size, 'encoder hidden size and decoder hidden size are not match, please use a bridge layer'
+
+        if self.separate_present_absent:
+            if self.manager_mode == 2:  # use GRU as a manager
+                self.manager = nn.GRU(input_size=self.decoder_size, hidden_size=self.goal_vector_size, num_layers=1, bidirectional=False, batch_first=False, dropout=self.dropout)
+                self.bridge_manager = opt.bridge_manager
+                if self.bridge_manager:
+                    self.manager_bridge_layer = nn.Linear(self.encoder_size * self.num_directions, self.goal_vector_size)
+                else:
+                    self.manager_bridge_layer = None
+            elif self.manager_mode == 1:  # use two trainable vectors only
+                self.manager = ManagerBasic(self.goal_vector_size)
 
         if self.share_embeddings:
             self.encoder.embedding.weight = self.decoder.embedding.weight
@@ -232,6 +253,10 @@ class Seq2SeqModel(nn.Module):
         # init y_t to be BOS token
         #y_t = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
         y_t_init = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
+
+        if self.separate_present_absent:
+            # byte tensor with size=batch_size to keep track of which batch has been proceeded to absent prediction
+            is_absent = torch.zeros(batch_size, dtype=torch.uint8)
 
         #print(y_t[:5])
         '''
@@ -340,8 +365,19 @@ class Seq2SeqModel(nn.Module):
                 h_te_t = None
                 # decoder_input = y_t
 
+            if self.separate_present_absent:
+                # update the is_absent vector
+                for i in range(batch_size):
+                    if y_t[i].item() == self.peos_idx:
+                        is_absent[i] = 1
+                #
+                if self.manager_mode == 1:
+                    g_t = self.manager(is_absent)
+            else:
+                g_t = None
+
             decoder_dist, h_t_next, _, attn_dist, p_gen, coverage = \
-                self.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank, h_te_t)
+                self.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank, h_te_t, g_t)
             decoder_dist_all.append(decoder_dist.unsqueeze(1))  # [batch, 1, vocab_size]
             attention_dist_all.append(attn_dist.unsqueeze(1))  # [batch, 1, src_seq_len]
             if self.coverage_attn:

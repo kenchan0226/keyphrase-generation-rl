@@ -203,6 +203,9 @@ if __name__ == "__main__":
     if opt.reward_shaping and opt.one2many_mode == 1:
         raise ValueError("You cannot use reward shapping when one2many mode=1")
 
+    if opt.goal_vector_mode > 0 and not opt.separate_present_absent:
+        raise ValueError("To use goal vector, you must use the option -separate_present_absent")
+
     logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=True)
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]

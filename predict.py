@@ -113,7 +113,8 @@ def predict(test_data_loader, model, opt):
                                   cuda=opt.gpuid > -1,
                                   n_best=opt.n_best,
                                   block_ngram_repeat=opt.block_ngram_repeat,
-                                  ignore_when_blocking=opt.ignore_when_blocking
+                                  ignore_when_blocking=opt.ignore_when_blocking,
+                                  peos_idx=opt.word2idx[pykp.io.PEOS_WORD]
                                   )
     """
     if opt.one2many and opt.one2many_mode > 1:

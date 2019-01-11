@@ -9,7 +9,9 @@ import logging
 from pykp.target_encoder import TargetEncoder
 
 class RNNDecoder(nn.Module):
-    def __init__(self, vocab_size, embed_size, hidden_size, num_layers, memory_bank_size, coverage_attn, copy_attn, review_attn, pad_idx, attn_mode, dropout=0.0, use_target_encoder=False, target_encoder_size=64):
+    def __init__(self, vocab_size, embed_size, hidden_size, num_layers, memory_bank_size, coverage_attn, copy_attn,
+                 review_attn, pad_idx, attn_mode, dropout=0.0, use_target_encoder=False, target_encoder_size=64,
+                 goal_vector_mode=0, goal_vector_size=16):
         super(RNNDecoder, self).__init__()
         #self.input_size = input_size
         #self.input_size = embed_size + memory_bank_size
@@ -28,12 +30,17 @@ class RNNDecoder(nn.Module):
             self.embed_size,
             self.pad_token
         )
+        self.input_size = embed_size
         self.use_target_encoder = use_target_encoder
         if use_target_encoder:
-            self.input_size = embed_size + target_encoder_size
+            self.input_size += target_encoder_size
             self.target_encoder_size = target_encoder_size
-        else:
-            self.input_size = embed_size
+
+        self.goal_vector_mode = goal_vector_mode
+        self.goal_vector_size = goal_vector_size
+        if goal_vector_mode == 1:
+            self.input_size += goal_vector_size
+
         self.rnn = nn.GRU(input_size=self.input_size, hidden_size=hidden_size, num_layers=num_layers,
                           bidirectional=False, batch_first=False, dropout=dropout)
         self.attention_layer = Attention(
@@ -64,7 +71,7 @@ class RNNDecoder(nn.Module):
         self.vocab_dist_linear_2 = nn.Linear(hidden_size, vocab_size)
         self.softmax = MaskedSoftmax(dim=1)
 
-    def forward(self, y, h, memory_bank, src_mask, max_num_oovs, src_oov, coverage, decoder_memory_bank=None, target_encoder_state=None):
+    def forward(self, y, h, memory_bank, src_mask, max_num_oovs, src_oov, coverage, decoder_memory_bank=None, target_encoder_state=None, goal_vector=None):
         """
         :param y: [batch_size]
         :param h: [num_layers, batch_size, decoder_size]
@@ -75,6 +82,7 @@ class RNNDecoder(nn.Module):
         :param coverage: [batch_size, max_src_seq_len]
         :param decoder_memory_bank: [batch_size, t-1, decoder_size]
         :param target_encoder_state: [1, batch_size, target_encoder_size]
+        :param goal_vector: [1, batch_size, goal_vector_size]
         :return:
         """
         batch_size, max_src_seq_len = list(src_oov.size())
@@ -87,11 +95,16 @@ class RNNDecoder(nn.Module):
         # insert one dimension to the context tensor
         #rnn_input = torch.cat((y_emb, context.unsqueeze(0)), 2)  # [1, batch_size, embed_size + num_directions * encoder_size]
 
+        rnn_input = y_emb
+
         if self.use_target_encoder:
             assert target_encoder_state is not None, 'If you use target encoder, you must supply the target encoder state to the decoder'
-            rnn_input = torch.cat([y_emb, target_encoder_state.detach()], dim=2)  # [1, batch_size, embed_size+target_encoder_size]
-        else:
-            rnn_input = y_emb
+            rnn_input = torch.cat([rnn_input, target_encoder_state.detach()], dim=2)  # [1, batch_size, embed_size+target_encoder_size]
+
+        if self.goal_vector_mode == 1:
+            assert goal_vector is not None
+            rnn_input = torch.cat([rnn_input, goal_vector], dim=2)  # [1, batch_size, embed_size+goal_vector_size]
+
         _, h_next = self.rnn(rnn_input, h)
 
         assert h_next.size() == torch.Size([self.num_layers, batch_size, self.hidden_size])

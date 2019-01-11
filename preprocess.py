@@ -84,7 +84,7 @@ def read_src_and_trg_files(src_file, trg_file, is_train, remove_eos=True):
     tokenized_train_pairs = list(zip(tokenized_train_src, tokenized_train_trg))
     return tokenized_train_pairs
 
-def build_vocab(tokenized_src_trg_pairs):
+def build_vocab(tokenized_src_trg_pairs, include_peos):
     token_freq_counter = Counter()
     for src_word_list, trg_word_lists in tokenized_src_trg_pairs:
         token_freq_counter.update(src_word_list)
@@ -93,6 +93,8 @@ def build_vocab(tokenized_src_trg_pairs):
 
     # Discard special tokens if already present
     special_tokens = ['<pad>', '<bos>', '<eos>', '<unk>', '<sep>']
+    if include_peos:
+        special_tokens.append('<peos>')
     num_special_tokens = len(special_tokens)
 
     for s_t in special_tokens:
@@ -142,7 +144,7 @@ def main(opt):
     # with special tokens, '<pad>': 0, '<bos>': 1, '<eos>': 2, '<unk>': 3
     # word2id, id2word are ordered by frequencies, includes all the tokens in the data
     # simply concatenate src and target when building vocab
-    word2idx, idx2word, token_freq_counter = build_vocab(tokenized_train_pairs)
+    word2idx, idx2word, token_freq_counter = build_vocab(tokenized_train_pairs, opt.include_peos)
 
     # building preprocessed training set for one2one training mode
     train_one2one = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2one', include_original=True)
@@ -244,6 +246,8 @@ if __name__ == "__main__":
 
     parser.add_argument('-data_dir', required=True, help='The source file of the data')
     parser.add_argument('-remove_eos', action="store_true", help='Remove the eos after the title')
+    parser.add_argument('-include_peos', action="store_true", help='Include <peos> as a special token')
+
     config.vocab_opts(parser)
     #parser.add_argument('-vocab_size', default=50000, type=int, help='Max. number of words in vocab')
     #parser.add_argument('-max_unk_words', default=1000, type=int, help='Max. number of words in OOV vocab')

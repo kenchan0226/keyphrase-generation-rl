@@ -24,6 +24,7 @@ BOS_WORD = '<bos>'
 EOS_WORD = '<eos>'
 SEP_WORD = '<sep>'
 DIGIT = '<digit>'
+PEOS_WORD = '<peos>'
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
@@ -157,15 +158,27 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                 trg_oov_concat = []
                 trg_size = len(b['trg'])
                 assert len(b['trg']) == len(b['trg_copy'])
-                for trg_idx, (trg_phase, trg_phase_oov) in enumerate(zip(b['trg'], b['trg_copy'])):  # b['trg'] contains a list of targets, each target is a list of indices
+                for trg_idx, (trg_phase, trg_phase_oov) in enumerate(zip(b['trg'], b['trg_copy'])):
+                    # b['trg'] contains a list of targets (keyphrase), each target is a list of indices, 2d list of idx
                 #for trg_idx, a in enumerate(zip(b['trg'], b['trg_copy'])):
-                    #trg_phase, trg_phase_oov = a
-                    if trg_idx == trg_size - 1:  # if this is the last keyphrase, end with <eos>
-                        trg_concat += trg_phase + [self.word2idx[EOS_WORD]]
-                        trg_oov_concat += trg_phase_oov + [self.word2idx[EOS_WORD]]
+                    #trg_phase, trg_phase_oov are list of idx
+                    if trg_phase[0] == self.word2idx[PEOS_WORD]:
+                        if trg_idx == 0:
+                            trg_concat += trg_phase
+                            trg_oov_concat += trg_phase_oov
+                        else:
+                            trg_concat[-1] = trg_phase[0]
+                            trg_oov_concat[-1] = trg_phase_oov[0]
+                            if trg_idx == trg_size - 1:
+                                trg_concat.append(self.word2idx[EOS_WORD])
+                                trg_oov_concat.append(self.word2idx[EOS_WORD])
                     else:
-                        trg_concat += trg_phase + [self.delimiter]  # trg_concat = [target_1] + [delimiter] + [target_2] + [delimiter] + ...
-                        trg_oov_concat += trg_phase_oov + [self.delimiter]
+                        if trg_idx == trg_size - 1:  # if this is the last keyphrase, end with <eos>
+                            trg_concat += trg_phase + [self.word2idx[EOS_WORD]]
+                            trg_oov_concat += trg_phase_oov + [self.word2idx[EOS_WORD]]
+                        else:
+                            trg_concat += trg_phase + [self.delimiter]  # trg_concat = [target_1] + [delimiter] + [target_2] + [delimiter] + ...
+                            trg_oov_concat += trg_phase_oov + [self.delimiter]
                 trg.append(trg_concat)
                 trg_oov.append(trg_oov_concat)
         else:
