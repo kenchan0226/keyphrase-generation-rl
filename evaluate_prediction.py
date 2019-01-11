@@ -765,9 +765,11 @@ def main(opt):
         # separate present and absent keyphrases
         present_filtered_stemmed_pred_token_2dlist, absent_filtered_stemmed_pred_token_2dlist = separate_present_absent_by_source(stemmed_src_token_list, filtered_stemmed_pred_token_2dlist, opt.match_by_str)
         if opt.target_separated:
-            present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_source(stemmed_src_token_list, unique_stemmed_trg_token_2dlist, opt.match_by_str)
+            present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_segmenter(
+                unique_stemmed_trg_token_2dlist, present_absent_segmenter)
         else:
-            present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_segmenter(unique_stemmed_trg_token_2dlist, present_absent_segmenter)
+            present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_source(
+                stemmed_src_token_list, unique_stemmed_trg_token_2dlist, opt.match_by_str)
         num_present_filtered_predictions += len(present_filtered_stemmed_pred_token_2dlist)
         num_present_unique_targets += len(present_unique_stemmed_trg_token_2dlist)
         num_absent_filtered_predictions += len(absent_filtered_stemmed_pred_token_2dlist)
