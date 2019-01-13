@@ -14,7 +14,7 @@ from collections import defaultdict
 import os
 import sys
 from utils.string_helper import *
-from pykp.reward import sample_list_to_str_2dlist, compute_reward
+from pykp.reward import sample_list_to_str_2dlist, compute_batch_reward
 
 #stemmer = PorterStemmer()
 
@@ -112,7 +112,7 @@ def evaluate_reward(data_loader, generator, opt):
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
-            sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _ = generator.sample(
+            sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _, _, _ = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=0)
             #pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
@@ -123,7 +123,7 @@ def evaluate_reward(data_loader, generator, opt):
             sample_time = time_since(start_time)
             sample_time_total += sample_time
 
-            final_reward = compute_reward(pred_str_2dlist, trg_str_2dlist, batch_size, reward_type, topk, match_type, regularization_factor=0.0)  # np.array, [batch_size]
+            final_reward = compute_batch_reward(pred_str_2dlist, trg_str_2dlist, batch_size, reward_type, topk, match_type, regularization_factor=0.0)  # np.array, [batch_size]
 
             final_reward_sum += final_reward.sum(0)
 
@@ -177,7 +177,7 @@ def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
-            sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _ = generator.sample(
+            sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _, _, _ = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
                 one2many_mode=one2many_mode, num_predictions=num_predictions)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
@@ -347,7 +347,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
                 if opt.one2many:
                     all_keyphrase_list = []  # a list of word list contains all the keyphrases in the top max_n sequences decoded by beam search
                     for word_list in pred_str_list:
-                        all_keyphrase_list += split_concated_keyphrases(word_list, delimiter_word)
+                        all_keyphrase_list += split_word_list_by_delimiter(word_list, delimiter_word, opt.separate_present_absent, pykp.io.PEOS_WORD)
                         #not_duplicate_mask = check_duplicate_keyphrases(all_keyphrase_list)
                     #pred_str_list = [word_list for word_list, is_keep in zip(all_keyphrase_list, not_duplicate_mask) if is_keep]
                     pred_str_list = all_keyphrase_list

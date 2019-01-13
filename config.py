@@ -268,7 +268,7 @@ def train_opts(parser):
                         help="The max length of sequence that can be sampled by the model")
     parser.add_argument('-max_length', type=int, default=6,
                         help='Maximum prediction length.')
-    parser.add_argument('-topk', type=int, default=10,
+    parser.add_argument('-topk', type=str, default='M',
                         help='The only pick the top k predictions in reward.')
     parser.add_argument('-reward_type', default='0', type=int,
                         choices=[0, 1, 2, 3, 4, 5, 6, 7, 8],

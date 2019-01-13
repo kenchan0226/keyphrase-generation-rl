@@ -645,7 +645,7 @@ def update_score_dict(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed, k_lis
     return score_dict
 
 
-def filter_prediction(disable_valid_filter, disable_extra_one_word_filter, pred_token_2dlist_stemmed, pred_token_2d_list):
+def filter_prediction(disable_valid_filter, disable_extra_one_word_filter, pred_token_2dlist_stemmed):
     """
     Remove the duplicate predictions, can optionally remove invalid predictions and extra one word predictions
     :param disable_valid_filter:
@@ -654,14 +654,14 @@ def filter_prediction(disable_valid_filter, disable_extra_one_word_filter, pred_
     :param pred_token_2d_list:
     :return:
     """
-    num_predictions = len(pred_token_2d_list)
+    num_predictions = len(pred_token_2dlist_stemmed)
     is_unique_mask = check_duplicate_keyphrases(pred_token_2dlist_stemmed)  # boolean array, 1=unqiue, 0=duplicate
     pred_filter = is_unique_mask
     if not disable_valid_filter:
-        is_valid_mask = check_valid_keyphrases(pred_token_2d_list)
+        is_valid_mask = check_valid_keyphrases(pred_token_2dlist_stemmed)
         pred_filter = pred_filter * is_valid_mask
     if not disable_extra_one_word_filter:
-        extra_one_word_seqs_mask, num_one_word_seqs = compute_extra_one_word_seqs_mask(pred_token_2d_list)
+        extra_one_word_seqs_mask, num_one_word_seqs = compute_extra_one_word_seqs_mask(pred_token_2dlist_stemmed)
         pred_filter = pred_filter * extra_one_word_seqs_mask
     filtered_stemmed_pred_str_list = [word_list for word_list, is_keep in
                                           zip(pred_token_2dlist_stemmed, pred_filter) if
@@ -732,14 +732,18 @@ def main(opt):
     num_absent_unique_targets = 0
     max_unique_targets = 0
 
+    if opt.target_separated:
+        sum_incorrect_fraction_for_identifying_present = 0
+        sum_incorrect_fraction_for_identifying_absent = 0
+
     for data_idx, (src_l, trg_l, pred_l) in enumerate(zip(open(src_file_path), open(trg_file_path), open(pred_file_path))):
         num_src += 1
         # convert the str to token list
         pred_str_list = pred_l.strip().split(';')
         pred_str_list = pred_str_list[:opt.num_preds]
-        pred_token_2dlist = [pred_str.split(' ') for pred_str in pred_str_list]
+        pred_token_2dlist = [pred_str.strip().split(' ') for pred_str in pred_str_list]
         trg_str_list = trg_l.strip().split(';')
-        trg_token_2dlist = [trg_str.split(' ') for trg_str in trg_str_list]
+        trg_token_2dlist = [trg_str.strip().split(' ') for trg_str in trg_str_list]
         [title, context] = src_l.strip().split('<eos>')
         src_token_list = title.strip().split(' ') + context.strip().split(' ')
 
@@ -750,8 +754,20 @@ def main(opt):
         stemmed_trg_token_2dlist = stem_str_list(trg_token_2dlist)
         stemmed_pred_token_2dlist = stem_str_list(pred_token_2dlist)
 
+        # remove peos in predictions, then check if the model can successfuly separate present and absent keyphrases by segmenter
+        if opt.target_separated:
+            present_stemmed_pred_token_2dlist_by_segmenter, absent_stemmed_pred_token_2dlist_by_segmenter = separate_present_absent_by_segmenter(stemmed_pred_token_2dlist, present_absent_segmenter)
+            stemmed_pred_token_2dlist = present_stemmed_pred_token_2dlist_by_segmenter + absent_stemmed_pred_token_2dlist_by_segmenter  # remove all the peos token
+            # check present absent
+            num_absent_before_segmenter = len(present_stemmed_pred_token_2dlist_by_segmenter) - sum(check_present_keyphrases(stemmed_src_token_list, present_stemmed_pred_token_2dlist_by_segmenter))
+            num_present_after_segmenter = sum(check_present_keyphrases(stemmed_src_token_list, absent_stemmed_pred_token_2dlist_by_segmenter))
+            incorrect_fraction_for_identifying_present = num_absent_before_segmenter/len(present_stemmed_pred_token_2dlist_by_segmenter) if len(present_stemmed_pred_token_2dlist_by_segmenter) > 0 else 0
+            incorrect_fraction_for_identifying_absent = num_present_after_segmenter/len(absent_stemmed_pred_token_2dlist_by_segmenter) if len(absent_stemmed_pred_token_2dlist_by_segmenter) > 0 else 0
+            sum_incorrect_fraction_for_identifying_present += incorrect_fraction_for_identifying_present
+            sum_incorrect_fraction_for_identifying_absent += incorrect_fraction_for_identifying_absent
+
         # Filter out duplicate, invalid, and extra one word predictions
-        filtered_stemmed_pred_token_2dlist, num_duplicated_predictions = filter_prediction(opt.disable_valid_filter, opt.disable_extra_one_word_filter, stemmed_pred_token_2dlist, pred_token_2dlist)
+        filtered_stemmed_pred_token_2dlist, num_duplicated_predictions = filter_prediction(opt.disable_valid_filter, opt.disable_extra_one_word_filter, stemmed_pred_token_2dlist)
         num_unique_predictions += (num_predictions - num_duplicated_predictions)
 
         # Remove duplicated targets
@@ -815,6 +831,11 @@ def main(opt):
 
     # Write to files
     results_txt_file = open(os.path.join(opt.exp_path, "results_log.txt"), "w")
+    if opt.target_separated:
+        result_txt_str += "===================================Separation====================================\n"
+        result_txt_str += "Avg error fraction for identifying present keyphrases: {}\n".format(sum_incorrect_fraction_for_identifying_present / num_src)
+        result_txt_str += "Avg error fraction for identifying absent keyphrases: {}\n".format(sum_incorrect_fraction_for_identifying_absent / num_src)
+
     results_txt_file.write(result_txt_str)
     results_txt_file.close()
 

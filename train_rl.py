@@ -40,6 +40,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                   bos_idx=opt.word2idx[pykp.io.BOS_WORD],
                                   eos_idx=opt.word2idx[pykp.io.EOS_WORD],
                                   pad_idx=opt.word2idx[pykp.io.PAD_WORD],
+                                  peos_idx=opt.word2idx[pykp.io.PEOS_WORD],
                                   beam_size=1,
                                   max_sequence_length=opt.max_length,
                                   copy_attn=opt.copy_attention,
@@ -184,14 +185,14 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     #generator.model.train()
 
     # sample a sequence from the model
-    # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
+    # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, prediction is a list of 0 dim tensors
     # log_selected_token_dist: size: [batch, output_seq_len]
     start_time = time.time()
-    sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask, entropy = generator.sample(
+    sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask, entropy, location_of_eos_for_each_batch, location_of_peos_for_each_batch = generator.sample(
         src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
         one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, entropy_regularize=entropy_regularize)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk,
-                              src_str_list)
+                              src_str_list, opt.separate_present_absent, pykp.io.PEOS_WORD)
     sample_time = time_since(start_time)
     max_pred_seq_len = log_selected_token_dist.size(1)
 
@@ -205,7 +206,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
         generator.model.eval()
         with torch.no_grad():
             start_time = time.time()
-            greedy_sample_list, _, _, greedy_eos_idx_mask, _ = generator.sample(src, src_lens, src_oov, src_mask,
+            greedy_sample_list, _, _, greedy_eos_idx_mask, _, _, _ = generator.sample(src, src_lens, src_oov, src_mask,
                                                                              oov_lists, opt.max_length,
                                                                              greedy=True, one2many=one2many,
                                                                              one2many_mode=one2many_mode,
@@ -214,7 +215,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
             greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
                                                           eos_idx,
                                                           delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk,
-                                                        src_str_list)
+                                                        src_str_list, opt.separate_present_absent, pykp.io.PEOS_WORD)
         generator.model.train()
 
     # Compute the reward for each predicted keyphrase
@@ -247,19 +248,28 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
         stepwise_reward = phrase_reward_to_stepwise_reward(phrase_reward, pred_eos_idx_mask)
         q_value_estimate_array = np.cumsum(stepwise_reward[:, ::-1], axis=1)[:, ::-1].copy()
 
-    elif opt.mc_rollouts:
-        for t in range(max_pred_seq_len):
-            pass
+    elif opt.separate_present_absent:
+        present_absent_reward = compute_present_absent_reward(pred_str_2dlist, trg_str_2dlist, reward_type=reward_type, topk=topk, match_type=match_type,
+                       regularization_factor=regularization_factor, regularization_type=regularization_type, entropy=entropy_array)
+        cumulative_reward = present_absent_reward.sum(1)
+        cumulative_reward_sum = cumulative_reward.sum(0)
+        # Subtract reward by a baseline if needed
+        if opt.baseline == 'self':
+            present_absent_baseline = compute_present_absent_reward(greedy_str_2dlist, trg_str_2dlist, reward_type=reward_type, topk=topk, match_type=match_type,
+                       regularization_factor=regularization_factor, regularization_type=regularization_type, entropy=entropy_array)
+            present_absent_reward = present_absent_reward - present_absent_baseline
+        stepwise_reward = present_absent_reward_to_stepwise_reward(present_absent_reward, max_pred_seq_len, location_of_peos_for_each_batch, location_of_eos_for_each_batch)
+        q_value_estimate_array = np.cumsum(stepwise_reward[:, ::-1], axis=1)[:, ::-1].copy()
 
     else:  # neither using reward shaping nor monte-carlo rollout
         # only receive reward at the end of whole sequence, np array: [batch_size]
-        cumulative_reward = compute_reward(pred_str_2dlist, trg_str_2dlist, batch_size, reward_type=reward_type, topk=topk, match_type=match_type,
+        cumulative_reward = compute_batch_reward(pred_str_2dlist, trg_str_2dlist, batch_size, reward_type=reward_type, topk=topk, match_type=match_type,
                        regularization_factor=regularization_factor, regularization_type=regularization_type, entropy=entropy_array)
         # store the sum of cumulative reward (before baseline) for the experiment log
         cumulative_reward_sum = cumulative_reward.sum(0)
         # Subtract the cumulative reward by a baseline if needed
         if opt.baseline == 'self':
-            baseline = compute_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, reward_type=reward_type, topk=topk, match_type=match_type,
+            baseline = compute_batch_reward(greedy_str_2dlist, trg_str_2dlist, batch_size, reward_type=reward_type, topk=topk, match_type=match_type,
                        regularization_factor=regularization_factor, regularization_type=regularization_type, entropy=entropy_array)
             cumulative_reward = cumulative_reward - baseline
         # q value estimation for each time step equals to the (baselined) cumulative reward

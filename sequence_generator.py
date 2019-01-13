@@ -120,7 +120,7 @@ class SequenceGenerator(object):
             decoder_memory_bank = None
 
         if self.model.separate_present_absent:
-            is_absent = torch.zeros(batch_size, dtype=torch.uint8)
+            is_absent = torch.zeros(batch_size * self.beam_size, dtype=torch.uint8)
 
         # expand memory_bank, src_mask
         memory_bank = memory_bank.repeat(beam_size, 1, 1)  # [batch * beam_size, max_src_len, memory_bank_size]
@@ -380,6 +380,15 @@ class SequenceGenerator(object):
         else:
             decoder_memory_bank = None
 
+        location_of_eos_for_each_batch = torch.zeros(batch_size, dtype=torch.long)
+
+        if self.model.separate_present_absent:
+            # byte tensor with size=batch_size to keep track of which batch has been proceeded to absent prediction
+            is_absent = torch.zeros(batch_size, dtype=torch.uint8)
+            location_of_peos_for_each_batch = torch.zeros(batch_size, dtype=torch.long)
+        else:
+            location_of_peos_for_each_batch = None
+
         # init y_t to be BOS token
         y_t_init = src.new_ones(batch_size) * self.bos_idx  # [batch_size]
         sample_list = [{"prediction": [], "attention": [], "done": False} for _ in range(batch_size)]
@@ -468,9 +477,21 @@ class SequenceGenerator(object):
             else:
                 h_t_te = None
 
+            if self.model.separate_present_absent:
+                # update the is_absent vector
+                for i in range(batch_size):
+                    if y_t[i].item() == self.peos_idx:
+                        is_absent[i] = 1
+                        location_of_peos_for_each_batch[i] = t - 1
+                #
+                if self.model.manager_mode == 1:
+                    g_t = self.model.manager(is_absent)
+            else:
+                g_t = None
+
             # [batch, vocab_size], [dec_layers, batch, decoder_size], [batch, memory_bank_size], [batch, src_len], [batch, src_len]
             decoder_dist, h_t_next, context, attn_dist, _, coverage = \
-                self.model.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank, h_t_te)
+                self.model.decoder(y_t, h_t, memory_bank, src_mask, max_num_oov, src_oov, coverage, decoder_memory_bank, h_t_te, g_t)
 
             log_decoder_dist = torch.log(decoder_dist + EPS)  # [batch, vocab_size]
 
@@ -493,6 +514,7 @@ class SequenceGenerator(object):
                     sample['attention'].append(attn_dist[batch_idx])  # [src_len] tensor
                     if int(prediction[batch_idx][0].item()) == self.model.eos_idx and pred_counters[batch_idx].item() == num_predictions-1:
                         sample['done'] = True
+                        location_of_eos_for_each_batch[batch_idx] = t
                 else:
                     pass
 
@@ -534,7 +556,7 @@ class SequenceGenerator(object):
         else:
             return sample_list, log_selected_token_dist, unfinished_mask_all, eos_idx_mask_all
         """
-        return sample_list, log_selected_token_dist, unfinished_mask_all, eos_idx_mask_all, entropy
+        return sample_list, log_selected_token_dist, unfinished_mask_all, eos_idx_mask_all, entropy, location_of_eos_for_each_batch, location_of_peos_for_each_batch
 
     def sample_reset(self, src, src_lens, src_oov, src_mask, oov_lists, max_sample_length, greedy=False, one2many=False, one2many_mode=1, num_predictions=1):
         # src, src_lens, src_oov, src_mask, oov_lists, word2idx
