@@ -523,6 +523,8 @@ def post_predict_opts(parser):
                         help='Treat unk as invalid output')
     parser.add_argument('-target_separated', action="store_true", default=False,
                         help='The targets has already been separated into present keyphrases and absent keyphrases')
+    parser.add_argument('-reverse_sorting', action="store_true", default=False,
+                        help='Only effective in target separated.')
 
 
 def interactive_predict_opts(parser):

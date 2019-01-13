@@ -756,7 +756,11 @@ def main(opt):
 
         # remove peos in predictions, then check if the model can successfuly separate present and absent keyphrases by segmenter
         if opt.target_separated:
-            present_stemmed_pred_token_2dlist_by_segmenter, absent_stemmed_pred_token_2dlist_by_segmenter = separate_present_absent_by_segmenter(stemmed_pred_token_2dlist, present_absent_segmenter)
+            if opt.reverse_sorting:
+                absent_stemmed_pred_token_2dlist_by_segmenter, present_stemmed_pred_token_2dlist_by_segmenter = separate_present_absent_by_segmenter(
+                    stemmed_pred_token_2dlist, present_absent_segmenter)
+            else:
+                present_stemmed_pred_token_2dlist_by_segmenter, absent_stemmed_pred_token_2dlist_by_segmenter = separate_present_absent_by_segmenter(stemmed_pred_token_2dlist, present_absent_segmenter)
             stemmed_pred_token_2dlist = present_stemmed_pred_token_2dlist_by_segmenter + absent_stemmed_pred_token_2dlist_by_segmenter  # remove all the peos token
             # check present absent
             num_absent_before_segmenter = len(present_stemmed_pred_token_2dlist_by_segmenter) - sum(check_present_keyphrases(stemmed_src_token_list, present_stemmed_pred_token_2dlist_by_segmenter))
@@ -781,8 +785,12 @@ def main(opt):
         # separate present and absent keyphrases
         present_filtered_stemmed_pred_token_2dlist, absent_filtered_stemmed_pred_token_2dlist = separate_present_absent_by_source(stemmed_src_token_list, filtered_stemmed_pred_token_2dlist, opt.match_by_str)
         if opt.target_separated:
-            present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_segmenter(
-                unique_stemmed_trg_token_2dlist, present_absent_segmenter)
+            if opt.reverse_sorting:
+                absent_unique_stemmed_trg_token_2dlist, present_unique_stemmed_trg_token_2dlist = separate_present_absent_by_segmenter(
+                    unique_stemmed_trg_token_2dlist, present_absent_segmenter)
+            else:
+                present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_segmenter(
+                    unique_stemmed_trg_token_2dlist, present_absent_segmenter)
         else:
             present_unique_stemmed_trg_token_2dlist, absent_unique_stemmed_trg_token_2dlist = separate_present_absent_by_source(
                 stemmed_src_token_list, unique_stemmed_trg_token_2dlist, opt.match_by_str)

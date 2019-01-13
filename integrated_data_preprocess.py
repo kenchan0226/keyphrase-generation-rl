@@ -349,7 +349,10 @@ def sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyp
     sorted_keyphrase_indices = np.argsort(present_idx_array)
     sorted_keyphrase_list = [keyphrase_list[idx] for idx in sorted_keyphrase_indices]
     if separate_present_absent:
-        sorted_keyphrase_list.insert(num_present_keyphrases, present_absent_segmenter)
+        if reverse_sorting:
+            sorted_keyphrase_list = sorted_keyphrase_list[num_present_keyphrases:] + [present_absent_segmenter] + sorted_keyphrase_list[:num_present_keyphrases]
+        else:
+            sorted_keyphrase_list.insert(num_present_keyphrases, present_absent_segmenter)
     return sorted_keyphrase_list
     #return [keyphrase_list[idx] for idx in sorted_keyphrase_indices]
 
@@ -596,6 +599,8 @@ if __name__ == '__main__':
                         help='Whether to enrich the keyphrases with the redirections from wikipeida.')
     parser.add_argument('-fine_grad_digit_matching', action='store_true',
                         help='Whether to use fine grad digit replace.')
+    parser.add_argument('-reverse_sorting', action='store_true',
+                        help='Reverse the order of sorting, only effective in sort_keyphrase')
 
     opts = parser.parse_args()
 
@@ -626,6 +631,11 @@ if __name__ == '__main__':
         fine_grad_digit_matching = True
     else:
         fine_grad_digit_matching = False
+
+    if opts.reverse_sorting:
+        reverse_sorting = True
+    else:
+        reverse_sorting = False
 
     json2txt_for_corenlp(json_home=opts.json_home, dataset=opts.dataset, data_type=opts.data_type, saved_home=opts.saved_home,
                          fine_grad=opts.fine_grad, use_orig_keys=opts.use_orig_keys, variations=opts.variations,
