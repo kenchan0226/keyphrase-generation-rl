@@ -267,11 +267,13 @@ def get_tokens(text, fine_grad=True, use_corenlp=True):
         tokens = filter(lambda w: len(w) > 0, re.split(r'[^a-zA-Z0-9_<>,\(\)\.\'%]', text))
     else:
         tokens = text.split()
-    # replace the digit terms with <digit>
-    tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
+
     if use_corenlp:
         tokens = CoreNLP.word_tokenize(' '.join(tokens))
     # c = ' '.join(CoreNLP.word_tokenize(c.strip())) + '\n'
+
+    # replace the digit terms with <digit>
+    tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
 
     return tokens
 
