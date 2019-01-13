@@ -50,7 +50,10 @@ class RNNDecoder(nn.Module):
             attn_mode=attn_mode
         )
         if copy_attn:
-            self.p_gen_linear = nn.Linear(embed_size + hidden_size + memory_bank_size, 1)
+            p_gen_input_size = embed_size + hidden_size + memory_bank_size
+            if goal_vector_mode == 2:
+                p_gen_input_size += goal_vector_size
+            self.p_gen_linear = nn.Linear(p_gen_input_size, 1)
 
         self.sigmoid = nn.Sigmoid()
         #self.p_gen_linear = nn.Linear(input_size + hidden_size, 1)
@@ -140,7 +143,10 @@ class RNNDecoder(nn.Module):
 
         p_gen = None
         if self.copy_attn:
-            p_gen_input = torch.cat((context, last_layer_h_next, y_emb.squeeze(0)), dim=1)  # [B, memory_bank_size + decoder_size + embed_size]
+            if self.goal_vector_mode == 2:
+                p_gen_input = torch.cat((context, last_layer_h_next, y_emb.squeeze(0), goal_vector.squeeze(0)), dim=1)  # [B, memory_bank_size + decoder_size + embed_size + goal_vector]
+            else:
+                p_gen_input = torch.cat((context, last_layer_h_next, y_emb.squeeze(0)), dim=1)  # [B, memory_bank_size + decoder_size + embed_size]
             #p_gen = self.sigmoid(self.p_gen_linear(p_gen_input))
             p_gen = self.sigmoid(self.p_gen_linear(p_gen_input))
 
