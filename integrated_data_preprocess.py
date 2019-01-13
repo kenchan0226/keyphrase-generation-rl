@@ -273,7 +273,10 @@ def get_tokens(text, fine_grad=True, use_corenlp=True):
     # c = ' '.join(CoreNLP.word_tokenize(c.strip())) + '\n'
 
     # replace the digit terms with <digit>
-    tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
+    if fine_grad_digit_matching:
+        tokens = [w if not re.match('^[+-]?((\d+(\.\d*)?)|(\.\d+))$', w) else DIGIT for w in tokens]
+    else:
+        tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
 
     return tokens
 
@@ -387,6 +390,8 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
         processed_files_suffix += "_parenthesis"
     if separate_present_absent:
         processed_files_suffix += "_separated"
+    if fine_grad_digit_matching:
+        processed_files_suffix += "_digit"
 
     processed_keyword_file = open(os.path.join(saved_data_dir, "{}_{}_keyword_for_corenlp{}.txt".format(dataset, data_type, processed_files_suffix)),
                                   'w', encoding='utf-8')
@@ -589,6 +594,8 @@ if __name__ == '__main__':
                         help='Whether to separate present and absent keyphrase using another token.')
     parser.add_argument('-find_redirections', action='store_true',
                         help='Whether to enrich the keyphrases with the redirections from wikipeida.')
+    parser.add_argument('-fine_grad_digit_matching', action='store_true',
+                        help='Whether to use fine grad digit replace.')
 
     opts = parser.parse_args()
 
@@ -614,6 +621,11 @@ if __name__ == '__main__':
         present_absent_segmenter = "<peos>"
         if not opts.sort_keyphrases:
             raise ValueError("If you want to separate present keyphrase and basent keyphrase, you must specify the option -sort_keyphrases.")
+
+    if opts.fine_grad_digit_matching:
+        fine_grad_digit_matching = True
+    else:
+        fine_grad_digit_matching = False
 
     json2txt_for_corenlp(json_home=opts.json_home, dataset=opts.dataset, data_type=opts.data_type, saved_home=opts.saved_home,
                          fine_grad=opts.fine_grad, use_orig_keys=opts.use_orig_keys, variations=opts.variations,
