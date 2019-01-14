@@ -165,7 +165,7 @@ def model_opts(parser):
 
 def vocab_opts(parser):
     # Dictionary Options
-    parser.add_argument('-vocab_size', type=int, default=50001,
+    parser.add_argument('-vocab_size', type=int, default=50002,
                         help="Size of the source vocabulary")
     # for copy model
     parser.add_argument('-max_unk_words', type=int, default=1000,

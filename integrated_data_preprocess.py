@@ -178,6 +178,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
         if len(possible_titles_that_present_in_src) == 0:
             return [], match_disambiguation_flag, redirections_flag
         else:
+            total_num_matched_disambiguation += len(possible_titles_that_present_in_src)
             entity_title = possible_titles_that_present_in_src[0]
             match_disambiguation_flag = True
 
@@ -215,6 +216,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
         titles_that_redirected_to_the_entity = find_redirected_titles(entity_title, fine_grad, use_corenlp)  # a list of word list
         if len(titles_that_redirected_to_the_entity) > 1:
             redirections_flag = True
+        total_num_redirections_found += len(find_redirections)
         wiki_variations += titles_that_redirected_to_the_entity
         #wiki_variations += find_redirected_titles(entity_title, fine_grad, use_corenlp)  # a list of word list
     # wiki_variations contains the title of the entity as well as the titles that redirected to the entities
@@ -450,9 +452,11 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
         print("# variations: {}".format(keyphrase_stat['num_variations']))
         print("# keyphrases with variations: {}".format(keyphrase_stat['num_keyphrases_with_variations']))
         print("# keyphrases with match disambiguation: {}".format(keyphrase_stat['num_keyphrases_with_match_disambiguation']))
+        print("# matched disambiguation: {}".format(total_num_matched_disambiguation))
     if match_ending_parenthesis:
         print("# extracted acronyms: {}".format(keyphrase_stat['num_extracted_acronym']))
     if find_redirections:
+        print('# redirections found: {}'.format(total_num_redirections_found))
         print('# keyphrases with redirections: {}'.format(keyphrase_stat['num_keyphrases_with_redirections']))
     # keyphrase_stat = {'num_keyphrases_with_variations': 0, 'num_keyphrases': 0, 'num_variations': 0, 'num_keyphrases_with_match_disambiguation': 0}
 
@@ -615,6 +619,12 @@ if __name__ == '__main__':
     #
     # set -fine_grad; -use_orig_keys
     #
+    if opts.find_redirections:
+        total_num_redirections_found = 0
+
+    if opts.variations:
+        total_num_matched_disambiguation = 0
+
     if opts.use_corenlp:
         # CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2016-10-31')
         # CoreNLP = StanfordCoreNLP(r'/nlp/CoreNLP/stanford-corenlp-full-2018-02-27/')
