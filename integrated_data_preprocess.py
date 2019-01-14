@@ -213,7 +213,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
     wiki_variations.append(entity_title_tokens)
     if find_redirections:
         titles_that_redirected_to_the_entity = find_redirected_titles(entity_title, fine_grad, use_corenlp)  # a list of word list
-        num_redirections_found = len(find_redirections)
+        num_redirections_found = len(titles_that_redirected_to_the_entity)
         wiki_variations += titles_that_redirected_to_the_entity
         #wiki_variations += find_redirected_titles(entity_title, fine_grad, use_corenlp)  # a list of word list
     # wiki_variations contains the title of the entity as well as the titles that redirected to the entities
@@ -619,11 +619,6 @@ if __name__ == '__main__':
     #
     # set -fine_grad; -use_orig_keys
     #
-    if opts.find_redirections:
-        total_num_redirections_found = 0
-
-    if opts.variations:
-        total_num_matched_disambiguation = 0
 
     if opts.use_corenlp:
         # CoreNLP = StanfordCoreNLP(r'/research/king3/hpchan/stanford-corenlp-full-2016-10-31')
