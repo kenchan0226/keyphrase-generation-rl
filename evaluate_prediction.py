@@ -732,7 +732,7 @@ def main(opt):
     num_absent_unique_targets = 0
     max_unique_targets = 0
 
-    if opt.target_separated:
+    if opt.prediction_separated:
         sum_incorrect_fraction_for_identifying_present = 0
         sum_incorrect_fraction_for_identifying_absent = 0
 
@@ -755,7 +755,7 @@ def main(opt):
         stemmed_pred_token_2dlist = stem_str_list(pred_token_2dlist)
 
         # remove peos in predictions, then check if the model can successfuly separate present and absent keyphrases by segmenter
-        if opt.target_separated:
+        if opt.prediction_separated:
             if opt.reverse_sorting:
                 absent_stemmed_pred_token_2dlist_by_segmenter, present_stemmed_pred_token_2dlist_by_segmenter = separate_present_absent_by_segmenter(
                     stemmed_pred_token_2dlist, present_absent_segmenter)
@@ -839,10 +839,10 @@ def main(opt):
 
     # Write to files
     results_txt_file = open(os.path.join(opt.exp_path, "results_log.txt"), "w")
-    if opt.target_separated:
+    if opt.prediction_separated:
         result_txt_str += "===================================Separation====================================\n"
-        result_txt_str += "Avg error fraction for identifying present keyphrases: {}\n".format(sum_incorrect_fraction_for_identifying_present / num_src)
-        result_txt_str += "Avg error fraction for identifying absent keyphrases: {}\n".format(sum_incorrect_fraction_for_identifying_absent / num_src)
+        result_txt_str += "Avg error fraction for identifying present keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_present / num_src)
+        result_txt_str += "Avg error fraction for identifying absent keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_absent / num_src)
 
     results_txt_file.write(result_txt_str)
     results_txt_file.close()
@@ -944,8 +944,7 @@ if __name__ == '__main__':
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
         opt.filtered_pred_path = opt.filtered_pred_path % (opt.exp, opt.timemark)
 
-    if opt.target_separated:
-        present_absent_segmenter = '<peos>'
+    present_absent_segmenter = '<peos>'
 
     if not os.path.exists(opt.exp_path):
         os.makedirs(opt.exp_path)

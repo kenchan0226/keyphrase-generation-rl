@@ -17,6 +17,7 @@ DIGIT = '<digit>'
 KEYWORDS_TUNCATE = 10
 MAX_KEYWORD_LEN = 6
 PRINTABLE = set(string.printable)
+FILE_NUM = {'inspec': 500, 'krapivin': 400, 'nus': 211, 'semeval': 100}
 
 
 def batch_check_present_idx_backup(src_str, keyphrase_str_list):
@@ -358,6 +359,49 @@ def sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyp
     #return [keyphrase_list[idx] for idx in sorted_keyphrase_indices]
 
 
+def process_cross_doamin_file(home_folder, dataset, saved_home, fine_grad=True, variations=False, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True, separate_present_absent=False, find_redirections=False):
+    context_file_path = os.path.join(saved_home, 'data_for_corenlp', '{}_testing_context_for_corenlp.txt'.format(dataset))
+    trg_file_path = os.path.join(saved_home, 'data_for_corenlp', '{}_testing_keyword_for_corenlp.txt'.format(dataset))
+    keywords_file = open(trg_file_path, 'w')
+    context_file = open(context_file_path, 'w')
+    keywords_lines = []
+    context_lines = []
+    keyphrase_stat = {'num_keyphrases_with_variations': 0, 'num_keyphrases': 0, 'num_variations': 0,
+                      'num_keyphrases_with_match_disambiguation': 0, 'num_extracted_acronym': 0,
+                      'num_keyphrases_with_redirections': 0,
+                      'num_redirections': 0, 'num_matched_disambiguation': 0}
+
+    file_num = FILE_NUM[dataset]
+    for i in tqdm(range(file_num)):
+        keywords_file_i = open( os.path.join(home_folder, dataset, 'keyphrase', '{}.txt'.format(i)) )
+        context_file_i = open( os.path.join(home_folder, dataset, 'text', '{}.txt'.format(i)) )
+
+        context_i_line = context_file_i.readlines()[0]
+        context_i_line = [w.split('_')[0] for w in context_i_line.strip().split()]
+
+        context_i_tokens = get_tokens(' '.join(context_i_line), fine_grad=fine_grad, use_corenlp=use_corenlp)
+        context_i_line = ' '.join(context_i_tokens) + '\n'
+
+        keywords_i = [line.strip() for line in keywords_file_i.readlines()]
+        keywords_i_line = ';'.join(keywords_i)
+        keywords_i_line = ';'.join(
+                process_keyphrase(keywords_i_line, context_i_tokens, keyphrase_stat, variations=variations, limit_num=False,
+                                  fine_grad=fine_grad, sort_keyphrases=sort_keyphrases,
+                                  match_ending_parenthesis=match_ending_parenthesis, use_corenlp=use_corenlp,
+                                  separate_present_absent=separate_present_absent, find_redirections=find_redirections)) + '\n'
+
+        if dataset != 'krapivin':
+            context_i_line = context_i_line.replace('<eos>', '. <eos>')
+
+        keywords_lines.append(keywords_i_line)
+        context_lines.append(context_i_line)
+
+    keywords_file.writelines(keywords_lines)
+    context_file.writelines(context_lines)
+
+    return
+
+
 def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=True, use_orig_keys=False, variations=False, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True, separate_present_absent=False, find_redirections=False):
     """
     process the original json file into a txt file for corenlp tokenizing
@@ -576,6 +620,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='integrated_data_preprocess')
     parser.add_argument('-json_home', type=str,
                         default='process_json/integrated_processed_data/json_home')
+    parser.add_argument('-raw_txt_home', type=str,
+                        default='process_json/integrated_processed_data/cross_domain_raw_txt')
     parser.add_argument('-saved_home', type=str,
                         default='process_json/integrated_processed_data')
     parser.add_argument('-dups_info_home', type=str,
@@ -644,11 +690,16 @@ if __name__ == '__main__':
     else:
         reverse_sorting = False
 
-    json2txt_for_corenlp(json_home=opts.json_home, dataset=opts.dataset, data_type=opts.data_type, saved_home=opts.saved_home,
-                         fine_grad=opts.fine_grad, use_orig_keys=opts.use_orig_keys, variations=opts.variations,
-                         sort_keyphrases=opts.sort_keyphrases, match_ending_parenthesis=opts.match_ending_parenthesis,
-                         use_corenlp=opts.use_corenlp, separate_present_absent=opts.separate_present_absent,
-                         find_redirections=opts.find_redirections)
+    if opts.dataset == "kp20k":
+        json2txt_for_corenlp(json_home=opts.json_home, dataset=opts.dataset, data_type=opts.data_type, saved_home=opts.saved_home,
+                             fine_grad=opts.fine_grad, use_orig_keys=opts.use_orig_keys, variations=opts.variations,
+                             sort_keyphrases=opts.sort_keyphrases, match_ending_parenthesis=opts.match_ending_parenthesis,
+                             use_corenlp=opts.use_corenlp, separate_present_absent=opts.separate_present_absent,
+                             find_redirections=opts.find_redirections)
+    else:
+        process_cross_doamin_file(home_folder=opts.raw_txt_home, dataset=opts.dataset, saved_home=opts.saved_home, fine_grad=opts.fine_grad, variations=opts.variations,
+                                  sort_keyphrases=opts.sort_keyphrases, match_ending_parenthesis=opts.match_ending_parenthesis, use_corenlp=opts.use_corenlp,
+                                  separate_present_absent=opts.separate_present_absent, find_redirections=opts.find_redirections)
 
     # 2. filter out the duplicates in the kp20k training data
     # filter_dups(saved_home=opts.saved_home, dups_info_home=opts.dups_info_home)
