@@ -513,7 +513,7 @@ def post_predict_opts(parser):
                         help="If False, it will only keep the first one-word prediction")
     parser.add_argument('-disable_valid_filter', action="store_true",
                         help="If False, it will remove all the invalid predictions")
-    parser.add_argument('-num_preds', type=int, default=50,
+    parser.add_argument('-num_preds', type=int, default=200,
                         help='It will only consider the first num_preds keyphrases in each line of the prediction file')
     parser.add_argument('-debug', action="store_true", default=False,
                         help='Print out the metric at each step or not')

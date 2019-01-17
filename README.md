@@ -91,7 +91,7 @@ After that, it create a predict.txt in the path specified by pred_path, e.g., pr
 For each line in the prediction.txt contains all the predicted keyphrases for a source. The keyphrases are separated by ';'.
 
 Then, run the evaluate_prediction.py to compute the evaluation metric
-`python3 evaluate_prediction.py -pred_file_path pred/predict.kp20k.bi-directional.20180916-152826/predictions.txt -src_file_path data/kp20k_filtered/test_src.txt -trg_file_path data/kp20k_filtered/test_trg.txt -exp_path exp/predict.kp20k.bi-directional.20180916-152826 -filtered_pred_path pred/predict.kp20k.bi-directional.20180916-152826 -exp kp20k -export_filtered_pred`
+`python3 evaluate_prediction.py -pred_file_path pred/predict.kp20k.bi-directional.20180916-152826/predictions.txt -src_file_path data/kp20k_filtered/test_src.txt -trg_file_path data/kp20k_filtered/test_trg.txt -exp_path exp/predict.kp20k.bi-directional.20180916-152826 -filtered_pred_path pred/predict.kp20k.bi-directional.20180916-152826 -exp kp20k -export_filtered_pred -invalidate_unk -disable_extra_one_word_filter -num_preds 200`
 
 The options for evaluate_prediction.py:
 ```
@@ -102,6 +102,9 @@ The options for evaluate_prediction.py:
 -exp []: name of the experiment for logging, e.g., kp20k
 -export_filtered_pred: a flag for exporting all the filtered keyphrases to a file
 -filtered_pred_path []: path of the file that store the filtered keyphrases
+-invalidate_unk: filter out all the unk words in predictions before computing the scores
+-disable_extra_one_word_filter: If you did not specify this option, it will only consider the first one-word prediction. Please use this option when using kp20k testing set.
+-num_preds []: It will only consider the first -num_preds keyphrases in each line of the prediction file.
 ```
 
 ## Testing for cross-domain dataset
