@@ -1,6 +1,6 @@
 # Deep Keypharse Generation with one-to-many
 Our implementation is built on the source code from [seq2seq-keyphrase-pytorch](https://github.com/memray/seq2seq-keyphrase-pytorch), which is the official implementation of the Deep Keyphrase Generation paper \[Meng et al. 2017\].
-Some codes are adapted from this [repository](https://github.com/atulkum/pointer_summarizer)
+Some codes are adapted from this [repository](https://github.com/atulkum/pointer_summarizer). The code for beam search algorithm is mainly adapted from [OpenNMT-py](https://github.com/OpenNMT/OpenNMT-py).
 
 ## Dependencies
 * python 3.5+
