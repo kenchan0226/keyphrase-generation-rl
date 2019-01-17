@@ -258,7 +258,10 @@ def get_tokens(text, fine_grad=True, use_corenlp=True):
     Need use the same word tokenizer between keywords and source context
     keep [_<>,\(\)\.\'%], replace digits to <digit>, split by [^a-zA-Z0-9_<>,\(\)\.\'%]
     """
-    text = re.sub(r'[\r\n\t]', '', text)
+    if replace_with_space:
+        text = re.sub(r'[\r\n\t]', ' ', text)
+    else:
+        text = re.sub(r'[\r\n\t]', '', text)
     text = ''.join(list(filter(lambda x: x in PRINTABLE, text)))
     if fine_grad:
         # tokenize by non-letters
@@ -375,6 +378,8 @@ def process_cross_doamin_file(home_folder, dataset, saved_home, fine_grad=True, 
         processed_files_suffix += "_digit"
     if reverse_sorting:
         processed_files_suffix += "_reversed"
+    if replace_with_space:
+        processed_files_suffix += "_space"
 
     context_file_path = os.path.join(saved_home, 'data_for_corenlp', '{}_testing_context_for_corenlp{}.txt'.format(dataset, processed_files_suffix))
     trg_file_path = os.path.join(saved_home, 'data_for_corenlp', '{}_testing_keyword_for_corenlp{}.txt'.format(dataset, processed_files_suffix))
@@ -667,6 +672,8 @@ if __name__ == '__main__':
                         help='Whether to enrich the keyphrases with the redirections from wikipeida.')
     parser.add_argument('-fine_grad_digit_matching', action='store_true',
                         help='Whether to use fine grad digit replace.')
+    parser.add_argument('-replace_with_space', action='store_true',
+                        help='Replace \t \n by a space')
     parser.add_argument('-reverse_sorting', action='store_true',
                         help='Reverse the order of sorting, only effective in sort_keyphrase')
 
@@ -700,6 +707,11 @@ if __name__ == '__main__':
         fine_grad_digit_matching = True
     else:
         fine_grad_digit_matching = False
+
+    if opts.replace_with_space:
+        replace_with_space = True
+    else:
+        replace_with_space = False
 
     if opts.reverse_sorting:
         reverse_sorting = True
