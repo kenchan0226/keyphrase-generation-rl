@@ -122,7 +122,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     report_train_reward.append(current_train_reward)
                     report_valid_reward.append(current_valid_reward)
 
-                    if opt.early_stop_rl:
+                    if not opt.disable_early_stop_rl:
                         if num_stop_increasing >= opt.early_stop_tolerance:
                             logging.info('Have not increased for %d check points, early stop training' % num_stop_increasing)
                             early_stop_flag = True
@@ -261,7 +261,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
         stepwise_reward = present_absent_reward_to_stepwise_reward(present_absent_reward, max_pred_seq_len, location_of_peos_for_each_batch, location_of_eos_for_each_batch)
         q_value_estimate_array = np.cumsum(stepwise_reward[:, ::-1], axis=1)[:, ::-1].copy()
 
-    else:  # neither using reward shaping nor monte-carlo rollout
+    else:  # neither using reward shaping
         # only receive reward at the end of whole sequence, np array: [batch_size]
         cumulative_reward = compute_batch_reward(pred_str_2dlist, trg_str_2dlist, batch_size, reward_type=reward_type, topk=topk, match_type=match_type,
                        regularization_factor=regularization_factor, regularization_type=regularization_type, entropy=entropy_array)

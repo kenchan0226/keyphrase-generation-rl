@@ -1,5 +1,6 @@
 # Deep Keypharse Generation with one-to-many
 Our implementation is built on the source code from [seq2seq-keyphrase-pytorch](https://github.com/memray/seq2seq-keyphrase-pytorch), which is the official implementation of the Deep Keyphrase Generation paper \[Meng et al. 2017\].
+Some codes are adapted from this [repository](https://github.com/atulkum/pointer_summarizer)
 
 ## Dependencies
 * python 3.5+
@@ -50,16 +51,42 @@ Some common options for the training script:
 -coverage_attn: a flag for training a model with coverage attention layer, we follow the coverage attention in [See et al. 2017]
 -coverage_loss: a flag for training a model with coverage loss in [See et al. 2017]
 -lambda_coverage [1]: Coefficient of coverage loss, a coefficient to control the importance of coverage loss.
+-review_attn: use the review attention in Chen et al. 2018a
+-orthogonal_loss: a flag to include orthogonal loss
+-lambda_orthogonal []: Lambda value for the orthogonal loss by Yuan et al.
+-use_target_encoder: Use the target encoder by Yuan et al.
+-lambda_target_encoder []: Lambda value for the target encoder loss by Yuan et al.
 -train_ml: a flag for training a model using maximum likehood in a supervised learning setting.
--train_rl: a flag for training a model using reward in a reinforcement learning setting.
 -one2many: a flag for training a model using one2many mode.
 -one2many_mode [0]: 1 means concatenated the keyphrases by <sep>; 2 means follows Chen et al. 2018a; 3 means reset the hidden state whenever the decoder emits a <EOS> token.
 -delimiter_type [0]: only effective in one2many mode. If delimiter_type = 0, SEP_WORD=<sep>, if delimiter_type = 1, SEP_WORD=<eos>.
+-separate_present_absent: whether to separate present keyphrase predictions and absnet keyphrase predictions by a <peos> token.
+-goal_vector_mode [0]: Only effective in when using separate_present_absent. 0: do not use goal vector, 1: goal vector act as an input to the decoder, 2: goal vector act as an extra input to p_gen
+-goal_vector_size [16]: Size of gaol vector
+-manger_mode [1]: Only effective in when using separate_present_absent. 1: two trainable vectors as the goal vectors. May support different types of maanger in the future.
 ```
 Please read the config.py for more details about the options.
 
-### RL training
-In this work, we add a Guassian noise vector to perturb the hidden state of GRU after generated each a keyphrase to encourage exploration.
+## RL training
+After you pretrain a model using cross-entropy loss, you can proceed to RL training.
+In this work, we use the reward obtained by greedy decoding as the baseline (self-critical policy gradient).
+
+Command example:
+`python3 train.py -data data/kp20k_filtered/ -vocab data/kp20k_filtered/ -exp_path exp/%s.%s -exp kp20k -epochs 20 -enc_layers 1 -train_rl -copy_attention -one2many -one2many_mode 1 -delimiter_type 0 -batch_size 32 -pretrained_model model/kp20k.ml.one2many.cat.copy.bi-directional.20190115-224431/kp20k.ml.one2many.cat.copy.bi-directional.epoch=3.batch=38600.total_batch=124000.model -max_length 60 -baseline self -reward_type 7 -replace_unk`
+
+Some common options for rl training:
+```
+-train_rl: a flag for training a model using reward in a reinforcement learning setting.
+-baseline []: specify the baseline for the policy gradient algorithm, choices=["none", "self"], "self" means we use self-critical as the baseline
+-reward_type []: 0: f1, 1: recall, 2: ndcg, 3: accuracy, 4: alpha-ndcg, 5: alpha-dcg, 6: AP, 7: F1 (all duplicates are considered as incorrect)
+-pretrained_model []: path of the MLE pre-trained model
+-replace_unk: replace the unk token with the token that received the highest attention score.
+-max_length []: max length of the output sequence
+-num_predictions []: only effective when one2many_mode=2 or 3, control the number of predicted keyphrases.
+-topk [M]: only pick the -topk predictions when computing the reward. M means use all the predictions to compute the reward.
+```
+
+We can also add Guassian noise vector to perturb the hidden state of GRU after generated each a keyphrase to encourage exploration. I tried it, but the performance is not good.
 The followings are the options for the perturbation.
 ```
 -init_perturb_std [0]: initial std of gaussian noise vector
@@ -74,19 +101,19 @@ We decay the std of the Guassian noise vector using the following methods
 where <img src="https://latex.codecogs.com/gif.latex?\sigma_{0}" title="\sigma_{0}" /> is the initial std, and <img src="https://latex.codecogs.com/gif.latex?\sigma_{T}" title="\sigma_{T}" /> is the terminal std, k is the decay factor, t is the number of iterations minus 1
 - Iteration-wise decay: the std is multiplied by decay factor after every 4000 iterations.
 
-The follwoings are the options for regularization.
+We can also regularize the reward using the following two options. The baseline reward is not affected by the regularization.
 ```
 -regularization_type []: 0 means no regulaization, 1 means using percentage of unique keyphrases as regularization, 2 means using entropy of policy as regularization
 -regularization_factor []: factor of regularization, regularized reward = (1-regularization_factor)*reward + regularization_factor*regularization
 ```
-We will not add the regularization to the baseline.
+
 
 ## Testing for kp20k dataset
 Examples of testing commands:
 
 First, run the predict.py to output all the predicted keyphrases to a text file.
 
-`python3 predict.py -data data/kp20k_filtered/ -vocab data/kp20k_filtered/ -exp_path exp/%s.%s -exp kp20k -pred_path pred/%s.%s -enc_layers 2 -batch_size 8 -beam_size 100 -copy_attention -model [path_to_saved_model]`
+`python3 predict.py -data data/kp20k_filtered/ -vocab data/kp20k_filtered/ -exp_path exp/%s.%s -exp kp20k -pred_path pred/%s.%s -enc_layers 2 -batch_size 8 -beam_size 100 -copy_attention -replace_unk -model [path_to_saved_model]`
 After that, it create a predict.txt in the path specified by pred_path, e.g., pred/predict.kp20k.bi-directional.20180914-095220/predictions.txt.
 For each line in the prediction.txt contains all the predicted keyphrases for a source. The keyphrases are separated by ';'.
 
@@ -105,6 +132,7 @@ The options for evaluate_prediction.py:
 -invalidate_unk: filter out all the unk words in predictions before computing the scores
 -disable_extra_one_word_filter: If you did not specify this option, it will only consider the first one-word prediction. Please use this option when using kp20k testing set.
 -num_preds []: It will only consider the first -num_preds keyphrases in each line of the prediction file.
+-replace_unk: replace the unk token with the token that received the highest attention score.
 ```
 
 ## Testing for cross-domain dataset
@@ -141,3 +169,12 @@ Deep Keyphrase Generation. ACL (1) 2017: 582-592
 
 Hai Ye, Lu Wang:
 Semi-Supervised Learning for Neural Keyphrase Generation. EMNLP 2018a: 4142-4153
+
+Jun Chen, Xiaoming Zhang, Yu Wu, Zhao Yan, Zhoujun Li:
+Keyphrase Generation with Correlation Constraints. EMNLP 2018a: 4057-4066
+
+Wang Chen, Yifan Gao, Jiani Zhang, Irwin King, Michael R. Lyu:
+Title-Guided Encoding for Keyphrase Generation. CoRR abs/1808.08575 (2018b)
+
+Xingdi Yuan, Tong Wang, Rui Meng, Khushboo Thaker, Daqing He, Adam Trischler:
+Generating Diverse Numbers of Diverse Keyphrases. CoRR abs/1810.05241 (2018)

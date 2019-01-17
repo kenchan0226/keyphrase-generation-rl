@@ -143,8 +143,8 @@ def model_opts(parser):
 
     parser.add_argument('-separate_present_absent', action="store_true", default=False,
                         help='whether to separate present keyphrase predictions and absnet keyphrase predictions as two sub-tasks')
-    parser.add_argument('-manager_mode', type=int, default=1, choices=[1, 2],
-                        help='Only effective in separate_present_absent. 1: two trainable vectors as the goal vectors; 2: Use RNN learn the goal vectors.')
+    parser.add_argument('-manager_mode', type=int, default=1, choices=[1],
+                        help='Only effective in separate_present_absent. 1: two trainable vectors as the goal vectors;')
     parser.add_argument('-goal_vector_size', type=int, default=16,
                         help='size of goal vector')
     parser.add_argument('-goal_vector_mode', type=int, default=0, choices=[0, 1, 2],
@@ -283,9 +283,9 @@ def train_opts(parser):
     parser.add_argument('-baseline', default="self", choices=["none", "self"],
                         help="The baseline in RL training. none: no baseline; self: use greedy decoding as baseline")
     parser.add_argument('-mc_rollouts', action="store_true", default=False,
-                        help="Use Monte Carlo rollouts to estimate q value")
+                        help="Use Monte Carlo rollouts to estimate q value. Not support yet.")
     parser.add_argument('-num_rollouts', type=int, default=3,
-                        help="The number of Monte Carlo rollouts. Only effective when mc_rollouts is True")
+                        help="The number of Monte Carlo rollouts. Only effective when mc_rollouts is True. Not supported yet")
 
     # One2many options
     parser.add_argument('-delimiter_type', type=int, default=0, choices=[0, 1],
@@ -294,7 +294,7 @@ def train_opts(parser):
                         help='If true, it will not split a sample into multiple src-keyphrase pairs')
     parser.add_argument('-one2many_mode', type=int, default=0, choices=[1, 2, 3],
                         help='Only effective when one2many=True. 1: concatenated the keyphrases by <sep>; 2: reset the inital state and input after each keyphrase; 3: reset the input after each keyphrase')
-    parser.add_argument('-num_predictions', type=int, default=10,
+    parser.add_argument('-num_predictions', type=int, default=1,
                         help='Control the number of predictions when one2many_mode=2. If you set the one2many_mode to 1, the number of predictions should also be 1.')
 
     #parser.add_argument('-loss_scale', type=float, default=0.5,
@@ -368,8 +368,8 @@ def train_opts(parser):
                         help='Run validation and save model parameters at this interval.')
     #parser.add_argument('-run_valid_every', type=int, default=4000,
     #                    help="Run validation test at this interval (every run_valid_every batches)")
-    parser.add_argument('-early_stop_rl', action="store_true", default=False,
-                        help="A flag to use early stopping in rl training.")
+    parser.add_argument('-disable_early_stop_rl', action="store_true", default=False,
+                        help="A flag to disable early stopping in rl training.")
     parser.add_argument('-early_stop_tolerance', type=int, default=4,
                         help="Stop training if it doesn't improve any more for several rounds of validation")
 
