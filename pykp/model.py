@@ -154,7 +154,7 @@ class Seq2SeqModel(nn.Module):
         if self.bridge == 'copy':
             assert self.encoder_size * self.num_directions == self.decoder_size, 'encoder hidden size and decoder hidden size are not match, please use a bridge layer'
 
-        if self.separate_present_absent:
+        if self.separate_present_absent and self.goal_vector_mode > 0:
             if self.manager_mode == 2:  # use GRU as a manager
                 self.manager = nn.GRU(input_size=self.decoder_size, hidden_size=self.goal_vector_size, num_layers=1, bidirectional=False, batch_first=False, dropout=self.dropout)
                 self.bridge_manager = opt.bridge_manager
@@ -254,7 +254,7 @@ class Seq2SeqModel(nn.Module):
         #y_t = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
         y_t_init = trg.new_ones(batch_size) * self.bos_idx  # [batch_size]
 
-        if self.separate_present_absent:
+        if self.separate_present_absent and self.goal_vector_mode > 0:
             # byte tensor with size=batch_size to keep track of which batch has been proceeded to absent prediction
             is_absent = torch.zeros(batch_size, dtype=torch.uint8)
 
@@ -365,7 +365,7 @@ class Seq2SeqModel(nn.Module):
                 h_te_t = None
                 # decoder_input = y_t
 
-            if self.separate_present_absent:
+            if self.separate_present_absent and self.goal_vector_mode > 0:
                 # update the is_absent vector
                 for i in range(batch_size):
                     if y_t[i].item() == self.peos_idx:

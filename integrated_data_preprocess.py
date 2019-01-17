@@ -360,8 +360,24 @@ def sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyp
 
 
 def process_cross_doamin_file(home_folder, dataset, saved_home, fine_grad=True, variations=False, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True, separate_present_absent=False, find_redirections=False):
-    context_file_path = os.path.join(saved_home, 'data_for_corenlp', '{}_testing_context_for_corenlp.txt'.format(dataset))
-    trg_file_path = os.path.join(saved_home, 'data_for_corenlp', '{}_testing_keyword_for_corenlp.txt'.format(dataset))
+    processed_files_suffix = ""
+    if variations:
+        processed_files_suffix += "_variations"
+    if find_redirections:
+        processed_files_suffix += "_redirections"
+    if sort_keyphrases:
+        processed_files_suffix += "_sorted"
+    if match_ending_parenthesis:
+        processed_files_suffix += "_parenthesis"
+    if separate_present_absent:
+        processed_files_suffix += "_separated"
+    if fine_grad_digit_matching:
+        processed_files_suffix += "_digit"
+    if reverse_sorting:
+        processed_files_suffix += "_reversed"
+
+    context_file_path = os.path.join(saved_home, 'data_for_corenlp', '{}_testing_context_for_corenlp{}.txt'.format(dataset, processed_files_suffix))
+    trg_file_path = os.path.join(saved_home, 'data_for_corenlp', '{}_testing_keyword_for_corenlp{}.txt'.format(dataset, processed_files_suffix))
     keywords_file = open(trg_file_path, 'w')
     context_file = open(context_file_path, 'w')
     keywords_lines = []
