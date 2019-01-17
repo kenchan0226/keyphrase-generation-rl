@@ -464,6 +464,8 @@ def json2txt_for_corenlp(json_home, dataset, data_type, saved_home, fine_grad=Tr
         processed_files_suffix += "_digit"
     if reverse_sorting:
         processed_files_suffix += "_reversed"
+    if replace_with_space:
+        processed_files_suffix += "_space"
 
     processed_keyword_file = open(os.path.join(saved_data_dir, "{}_{}_keyword_for_corenlp{}.txt".format(dataset, data_type, processed_files_suffix)),
                                   'w', encoding='utf-8')
