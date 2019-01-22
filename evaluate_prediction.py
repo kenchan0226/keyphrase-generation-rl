@@ -611,6 +611,28 @@ def average_precision_at_ks(r, k_list, num_predictions, num_trgs):
     return average_precision_array[return_indices]
 
 
+def find_v(f1_dict, num_samples, k_list, tag):
+    marco_f1_scores = np.zeros(len(k_list))
+    for i, topk in enumerate(k_list):
+        marco_f1_scores[i] = f1_dict['f1_score_sum@{}_{}'.format(topk, tag)] / num_samples
+    # for debug
+    print(marco_f1_scores)
+    return k_list[np.argmax(marco_f1_scores)]
+
+
+def update_f1_dict(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed, k_list, f1_dict, tag):
+    num_targets = len(trg_token_2dlist_stemmed)
+    num_predictions = len(pred_token_2dlist_stemmed)
+    is_match = compute_match_result(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed,
+                                    type='exact', dimension=1)
+    # Classification metrics
+    precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks = \
+        compute_classification_metrics_at_ks(is_match, num_predictions, num_targets, k_list=k_list)
+    for topk, f1_k in zip(k_list, f1_ks):
+        f1_dict['f1_score_sum@{}_{}'.format(topk, tag)] += f1_k
+    return f1_dict
+
+
 def update_score_dict(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed, k_list, score_dict, tag):
     num_targets = len(trg_token_2dlist_stemmed)
     num_predictions = len(pred_token_2dlist_stemmed)
@@ -722,8 +744,13 @@ def main(opt):
     if opt.export_filtered_pred:
         pred_output_file = open(os.path.join(opt.filtered_pred_path, "predictions_filtered.txt"), "w")
 
-    score_dict = defaultdict(list)
-    topk_dict = {'present': [5, 10, 'M'], 'absent': [5, 10, 50, 'M'], 'all': [5, 10, 'M']}
+    if opt.tune_f1_v:
+        f1_dict = defaultdict(lambda: 0)
+        topk_dict = {'present': list(range(1, 26)), 'absent': list(range(1, 26)), 'all': list(range(1, 26))}
+    else:
+        score_dict = defaultdict(list)
+        topk_dict = {'present': [5, 10, 'M'], 'absent': [5, 10, 50, 'M'], 'all': [5, 10, 'M']}
+
     num_src = 0
     num_unique_predictions = 0
     num_present_filtered_predictions = 0
@@ -799,15 +826,26 @@ def main(opt):
         num_absent_filtered_predictions += len(absent_filtered_stemmed_pred_token_2dlist)
         num_absent_unique_targets += len(absent_unique_stemmed_trg_token_2dlist)
 
-        # compute all the metrics and update the score_dict
-        score_dict = update_score_dict(unique_stemmed_trg_token_2dlist, filtered_stemmed_pred_token_2dlist,
-                                       topk_dict['all'], score_dict, 'all')
-        # compute all the metrics and update the score_dict for present keyphrase
-        score_dict = update_score_dict(present_unique_stemmed_trg_token_2dlist, present_filtered_stemmed_pred_token_2dlist,
-                                       topk_dict['present'], score_dict, 'present')
-        # compute all the metrics and update the score_dict for present keyphrase
-        score_dict = update_score_dict(absent_unique_stemmed_trg_token_2dlist, absent_filtered_stemmed_pred_token_2dlist,
-                                       topk_dict['absent'], score_dict, 'absent')
+        if opt.tune_f1_v:
+            # compute F1 score all
+            f1_dict = update_f1_dict(unique_stemmed_trg_token_2dlist, filtered_stemmed_pred_token_2dlist,
+                                           topk_dict['all'], f1_dict, 'all')
+            # compute F1 score present
+            f1_dict = update_f1_dict(present_unique_stemmed_trg_token_2dlist, present_filtered_stemmed_pred_token_2dlist,
+                                           topk_dict['present'], f1_dict, 'present')
+            # compute F1 score absent
+            f1_dict = update_f1_dict(absent_unique_stemmed_trg_token_2dlist, absent_filtered_stemmed_pred_token_2dlist,
+                                           topk_dict['absent'], f1_dict, 'absent')
+        else:
+            # compute all the metrics and update the score_dict
+            score_dict = update_score_dict(unique_stemmed_trg_token_2dlist, filtered_stemmed_pred_token_2dlist,
+                                           topk_dict['all'], score_dict, 'all')
+            # compute all the metrics and update the score_dict for present keyphrase
+            score_dict = update_score_dict(present_unique_stemmed_trg_token_2dlist, present_filtered_stemmed_pred_token_2dlist,
+                                           topk_dict['present'], score_dict, 'present')
+            # compute all the metrics and update the score_dict for present keyphrase
+            score_dict = update_score_dict(absent_unique_stemmed_trg_token_2dlist, absent_filtered_stemmed_pred_token_2dlist,
+                                           topk_dict['absent'], score_dict, 'absent')
 
         if opt.export_filtered_pred:
             final_pred_str_list = []
@@ -819,38 +857,51 @@ def main(opt):
     if opt.export_filtered_pred:
         pred_output_file.close()
 
-    num_unique_targets = num_present_unique_targets + num_absent_unique_targets
-    num_filtered_predictions = num_present_filtered_predictions + num_absent_filtered_predictions
+    if opt.tune_f1_v:
+        v_all = find_v(f1_dict, num_src, topk_dict['all'], 'all')
+        print("V for all {}".format(v_all))
+        v_present = find_v(f1_dict, num_src, topk_dict['present'], 'present')
+        print("V for present {}".format(v_present))
+        v_absent = find_v(f1_dict, num_src, topk_dict['absent'], 'absent')
+        print("V for absent {}".format(v_absent))
+        v_file = open(os.path.join(opt.exp_path, "tune_v_output.txt"), "w")
+        v_file.write("V for all {}\n".format(v_all))
+        v_file.write("V for present {}\n".format(v_present))
+        v_file.write("V for absent {}\n".format(v_absent))
+        v_file.close()
+    else:
+        num_unique_targets = num_present_unique_targets + num_absent_unique_targets
+        num_filtered_predictions = num_present_filtered_predictions + num_absent_filtered_predictions
 
-    result_txt_str = ""
+        result_txt_str = ""
 
-    # report global statistics
-    result_txt_str += ('Total #samples: %d\n' % num_src)
-    result_txt_str += ('Max. unique targets per src: %d\n' % (max_unique_targets))
-    result_txt_str += ('Total #unique predictions: %d\n' % num_unique_predictions)
+        # report global statistics
+        result_txt_str += ('Total #samples: %d\n' % num_src)
+        result_txt_str += ('Max. unique targets per src: %d\n' % (max_unique_targets))
+        result_txt_str += ('Total #unique predictions: %d\n' % num_unique_predictions)
 
-    # report statistics and scores for all predictions and targets
-    result_txt_str_all, field_list_all, result_list_all = report_stat_and_scores(num_filtered_predictions, num_unique_targets, num_src, score_dict, topk_dict['all'], 'all')
-    result_txt_str_present, field_list_present, result_list_present = report_stat_and_scores(num_present_filtered_predictions, num_present_unique_targets, num_src, score_dict, topk_dict['present'], 'present')
-    result_txt_str_absent, field_list_absent, result_list_absent = report_stat_and_scores(num_absent_filtered_predictions, num_absent_unique_targets, num_src, score_dict, topk_dict['absent'], 'absent')
-    result_txt_str += (result_txt_str_all + result_txt_str_present + result_txt_str_absent)
-    field_list = field_list_all + field_list_present + field_list_absent
-    result_list = result_list_all + result_list_present + result_list_absent
+        # report statistics and scores for all predictions and targets
+        result_txt_str_all, field_list_all, result_list_all = report_stat_and_scores(num_filtered_predictions, num_unique_targets, num_src, score_dict, topk_dict['all'], 'all')
+        result_txt_str_present, field_list_present, result_list_present = report_stat_and_scores(num_present_filtered_predictions, num_present_unique_targets, num_src, score_dict, topk_dict['present'], 'present')
+        result_txt_str_absent, field_list_absent, result_list_absent = report_stat_and_scores(num_absent_filtered_predictions, num_absent_unique_targets, num_src, score_dict, topk_dict['absent'], 'absent')
+        result_txt_str += (result_txt_str_all + result_txt_str_present + result_txt_str_absent)
+        field_list = field_list_all + field_list_present + field_list_absent
+        result_list = result_list_all + result_list_present + result_list_absent
 
-    # Write to files
-    results_txt_file = open(os.path.join(opt.exp_path, "results_log.txt"), "w")
-    if opt.prediction_separated:
-        result_txt_str += "===================================Separation====================================\n"
-        result_txt_str += "Avg error fraction for identifying present keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_present / num_src)
-        result_txt_str += "Avg error fraction for identifying absent keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_absent / num_src)
+        # Write to files
+        results_txt_file = open(os.path.join(opt.exp_path, "results_log.txt"), "w")
+        if opt.prediction_separated:
+            result_txt_str += "===================================Separation====================================\n"
+            result_txt_str += "Avg error fraction for identifying present keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_present / num_src)
+            result_txt_str += "Avg error fraction for identifying absent keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_absent / num_src)
 
-    results_txt_file.write(result_txt_str)
-    results_txt_file.close()
+        results_txt_file.write(result_txt_str)
+        results_txt_file.close()
 
-    results_tsv_file = open(os.path.join(opt.exp_path, "results_log.tsv"), "w")
-    results_tsv_file.write('\t'.join(field_list) + '\n')
-    results_tsv_file.write('\t'.join('%.5f' % result for result in result_list) + '\n')
-    results_tsv_file.close()
+        results_tsv_file = open(os.path.join(opt.exp_path, "results_log.tsv"), "w")
+        results_tsv_file.write('\t'.join(field_list) + '\n')
+        results_tsv_file.write('\t'.join('%.5f' % result for result in result_list) + '\n')
+        results_tsv_file.close()
     return
 
 

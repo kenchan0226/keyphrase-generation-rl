@@ -527,6 +527,8 @@ def post_predict_opts(parser):
                         help='The predictions has already been separated into present keyphrases and absent keyphrases')
     parser.add_argument('-reverse_sorting', action="store_true", default=False,
                         help='Only effective in target separated.')
+    parser.add_argument('-tune_f1_v', action="store_true", default=False,
+                        help='For tuning the F1@V score.')
 
 
 def interactive_predict_opts(parser):

@@ -119,7 +119,7 @@ class SequenceGenerator(object):
         else:
             decoder_memory_bank = None
 
-        if self.model.separate_present_absent:
+        if self.model.separate_present_absent and self.model.goal_vector_mode > 0:
             is_absent = torch.zeros(batch_size * self.beam_size, dtype=torch.uint8)
 
         # expand memory_bank, src_mask
@@ -177,7 +177,7 @@ class SequenceGenerator(object):
                 target_encoder_state = None
                 # decoder_input = y_t
 
-            if self.model.separate_present_absent:
+            if self.model.separate_present_absent and self.model.goal_vector_mode > 0:
                 # update the is_absent vector
                 for i in range(batch_size):
                     if decoder_input[i].item() == self.peos_idx:
@@ -383,9 +383,10 @@ class SequenceGenerator(object):
         location_of_eos_for_each_batch = torch.zeros(batch_size, dtype=torch.long)
 
         if self.model.separate_present_absent:
-            # byte tensor with size=batch_size to keep track of which batch has been proceeded to absent prediction
-            is_absent = torch.zeros(batch_size, dtype=torch.uint8)
             location_of_peos_for_each_batch = torch.zeros(batch_size, dtype=torch.long)
+            if self.model.goal_vector_mode > 0:
+                # byte tensor with size=batch_size to keep track of which batch has been proceeded to absent prediction
+                is_absent = torch.zeros(batch_size, dtype=torch.uint8)
         else:
             location_of_peos_for_each_batch = None
 
@@ -481,11 +482,15 @@ class SequenceGenerator(object):
                 # update the is_absent vector
                 for i in range(batch_size):
                     if y_t[i].item() == self.peos_idx:
-                        is_absent[i] = 1
                         location_of_peos_for_each_batch[i] = t - 1
+                        if self.model.goal_vector_mode > 0:
+                            is_absent[i] = 1
                 #
-                if self.model.manager_mode == 1:
-                    g_t = self.model.manager(is_absent)
+                if self.model.goal_vector_mode > 0:
+                    if self.model.manager_mode == 1:
+                        g_t = self.model.manager(is_absent)
+                else:
+                    g_t = None
             else:
                 g_t = None
 
