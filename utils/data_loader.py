@@ -34,7 +34,7 @@ def load_data_and_vocab(opt, load_train=True):
                 train_one2one = torch.load(opt.data + '/train.one2one.pt', 'wb')
             else:
                 train_one2one = torch.load(opt.data + '/train.one2one.%s.pt' % opt.data_filename_suffix, 'wb')
-            train_one2one_dataset = KeyphraseDataset(train_one2one, word2idx=word2idx, idx2word=idx2word, type='one2one', load_train=load_train, remove_src_eos=opt.remove_src_eos)
+            train_one2one_dataset = KeyphraseDataset(train_one2one, word2idx=word2idx, idx2word=idx2word, type='one2one', load_train=load_train, remove_src_eos=opt.remove_src_eos, title_guided=opt.title_guided)
             train_loader = DataLoader(dataset=train_one2one_dataset,
                                               collate_fn=train_one2one_dataset.collate_fn_one2one,
                                               num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
@@ -46,7 +46,7 @@ def load_data_and_vocab(opt, load_train=True):
             else:
                 valid_one2one = torch.load(opt.data + '/valid.one2one.%s.pt' % opt.data_filename_suffix, 'wb')
             valid_one2one_dataset = KeyphraseDataset(valid_one2one, word2idx=word2idx, idx2word=idx2word,
-                                                     type='one2one', load_train=load_train, remove_src_eos=opt.remove_src_eos)
+                                                     type='one2one', load_train=load_train, remove_src_eos=opt.remove_src_eos, title_guided=opt.title_guided)
             valid_loader = DataLoader(dataset=valid_one2one_dataset,
                                       collate_fn=valid_one2one_dataset.collate_fn_one2one,
                                       num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
@@ -59,7 +59,7 @@ def load_data_and_vocab(opt, load_train=True):
                 train_one2many = torch.load(opt.data + '/train.one2many.pt', 'wb')
             else:
                 train_one2many = torch.load(opt.data + '/train.one2many.%s.pt' % opt.data_filename_suffix, 'wb')
-            train_one2many_dataset = KeyphraseDataset(train_one2many, word2idx=word2idx, idx2word=idx2word, type='one2many', delimiter_type=opt.delimiter_type, load_train=load_train, remove_src_eos=opt.remove_src_eos)
+            train_one2many_dataset = KeyphraseDataset(train_one2many, word2idx=word2idx, idx2word=idx2word, type='one2many', delimiter_type=opt.delimiter_type, load_train=load_train, remove_src_eos=opt.remove_src_eos, title_guided=opt.title_guided)
             train_loader = DataLoader(dataset=train_one2many_dataset,
                                       collate_fn=train_one2many_dataset.collate_fn_one2many,
                                       num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
@@ -72,7 +72,7 @@ def load_data_and_vocab(opt, load_train=True):
                 valid_one2many = torch.load(opt.data + '/valid.one2many.%s.pt' % opt.data_filename_suffix, 'wb')
             #valid_one2many = valid_one2many[:2000]
             valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2idx=word2idx, idx2word=idx2word,
-                                                      type='one2many', delimiter_type=opt.delimiter_type, load_train=load_train, remove_src_eos=opt.remove_src_eos)
+                                                      type='one2many', delimiter_type=opt.delimiter_type, load_train=load_train, remove_src_eos=opt.remove_src_eos, title_guided=opt.title_guided)
             valid_loader = DataLoader(dataset=valid_one2many_dataset,
                                       collate_fn=valid_one2many_dataset.collate_fn_one2many,
                                       num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,
@@ -85,7 +85,7 @@ def load_data_and_vocab(opt, load_train=True):
         else:
             test_one2many = torch.load(opt.data + '/test.one2many.%s.pt' % opt.data_filename_suffix, 'wb')
         test_one2many_dataset = KeyphraseDataset(test_one2many, word2idx=word2idx, idx2word=idx2word,
-                                                      type='one2many', delimiter_type=opt.delimiter_type, load_train=load_train, remove_src_eos=opt.remove_src_eos)
+                                                      type='one2many', delimiter_type=opt.delimiter_type, load_train=load_train, remove_src_eos=opt.remove_src_eos, title_guided=opt.title_guided)
         test_loader = DataLoader(dataset=test_one2many_dataset,
                                       collate_fn=test_one2many_dataset.collate_fn_one2many,
                                       num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,

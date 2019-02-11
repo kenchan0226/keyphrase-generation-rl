@@ -149,6 +149,8 @@ def model_opts(parser):
                         help='size of goal vector')
     parser.add_argument('-goal_vector_mode', type=int, default=0, choices=[0, 1, 2],
                         help='Only effective in separate_present_absent. 0: no goal vector; 1: goal vector act as an extra input to the decoder; 2: goal vector act as an extra input to p_gen')
+    parser.add_argument('-title_guided', action="store_true", default=False,
+                        help='whether to use title-guided encoder')
 
 
     # parser.add_argument('-context_gate', type=str, default=None,
@@ -529,6 +531,17 @@ def post_predict_opts(parser):
                         help='Only effective in target separated.')
     parser.add_argument('-tune_f1_v', action="store_true", default=False,
                         help='For tuning the F1@V score.')
+    parser.add_argument('-all_ks', nargs='+', default=['5', '10', 'M'], type=str,
+                        help='only allow integer or M')
+    parser.add_argument('-present_ks', nargs='+', default=['5', '10', 'M'], type=str,
+                        help='')
+    parser.add_argument('-absent_ks', nargs='+', default=['5', '10', '50', 'M'], type=str,
+                        help='')
+    parser.add_argument('-target_already_stemmed', action="store_true", default=False,
+                        help='If it is true, it will not stem the target keyphrases.')
+    parser.add_argument('-meng_rui_precision', action="store_true", default=False,
+                        help='If it is true, when computing precision, it will divided by the number pf predictions, instead of divided by k.')
+
 
 
 def interactive_predict_opts(parser):

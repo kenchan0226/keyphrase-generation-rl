@@ -28,13 +28,16 @@ PEOS_WORD = '<peos>'
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2idx, idx2word, type='one2many', delimiter_type=0, load_train=True, remove_src_eos=False):
+    def __init__(self, examples, word2idx, idx2word, type='one2many', delimiter_type=0, load_train=True, remove_src_eos=False, title_guided=False):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         assert type in ['one2one', 'one2many']
         if type == 'one2one':
             keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
         elif type == 'one2many':
             keys = ['src', 'src_oov', 'oov_dict', 'oov_list', 'src_str', 'trg_str', 'trg', 'trg_copy']
+
+        if title_guided:
+            keys += ['title', 'title_oov']
 
         filtered_examples = []
 
@@ -65,6 +68,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             self.delimiter = self.word2idx[EOS_WORD]
         self.load_train = load_train
         self.remove_src_eos = remove_src_eos
+        self.title_guided = title_guided
 
     def __getitem__(self, index):
         return self.examples[index]
@@ -104,6 +108,12 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
             src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
 
+        if self.title_guided:
+            title = [b['title'] for b in batches]
+            title_oov = [b['title_oov'] for b in batches]
+        else:
+            title, title_oov, title_lens, title_mask = None, None, None, None
+
         """
         src = [b['src'] + [self.word2idx[EOS_WORD]] for b in batches]
         # src = [[self.word2idx[BOS_WORD]] + b['src'] + [self.word2idx[EOS_WORD]] for b in batches]
@@ -121,17 +131,24 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         oov_lists = [b['oov_list'] for b in batches]
 
         # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
-        seq_pairs = sorted(zip(src, trg, trg_oov, src_oov, oov_lists), key=lambda p: len(p[0]), reverse=True)
-        src, trg, trg_oov, src_oov, oov_lists = zip(*seq_pairs)
+        if self.title_guided:
+            seq_pairs = sorted(zip(src, trg, trg_oov, src_oov, oov_lists, title, title_oov), key=lambda p: len(p[0]), reverse=True)
+            src, trg, trg_oov, src_oov, oov_lists, title, title_oov = zip(*seq_pairs)
+            title, title_lens, title_mask = self._pad(title)
+            title_oov, _, _ = self._pad(title_oov)
+        else:
+            seq_pairs = sorted(zip(src, trg, trg_oov, src_oov, oov_lists), key=lambda p: len(p[0]), reverse=True)
+            src, trg, trg_oov, src_oov, oov_lists = zip(*seq_pairs)
 
         # pad the src and target sequences with <pad> token and convert to LongTensor
         src, src_lens, src_mask = self._pad(src)
         trg, trg_lens, trg_mask = self._pad(trg)
+
         #trg_target, _, _ = self._pad(trg_target)
         trg_oov, _, _ = self._pad(trg_oov)
         src_oov, _, _ = self._pad(src_oov)
 
-        return src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists
+        return src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists, title, title_oov, title_lens, title_mask
 
     def collate_fn_one2many(self, batches):
         assert self.type == 'one2many', 'The type of dataset should be one2many.'
@@ -145,6 +162,12 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             src = [b['src'] + [self.word2idx[EOS_WORD]] for b in batches]
             # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
             src_oov = [b['src_oov'] + [self.word2idx[EOS_WORD]] for b in batches]
+
+        if self.title_guided:
+            title = [b['title'] for b in batches]
+            title_oov = [b['title_oov'] for b in batches]
+        else:
+            title, title_oov, title_lens, title_mask = None, None, None, None
 
         batch_size = len(src)
 
@@ -196,13 +219,23 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
         # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
         if self.load_train:
-            seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, original_indices),
-                               key=lambda p: len(p[0]), reverse=True)
-            src, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, original_indices = zip(*seq_pairs)
+            if self.title_guided:
+                seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, original_indices, title, title_oov),
+                                   key=lambda p: len(p[0]), reverse=True)
+                src, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, original_indices, title, title_oov = zip(*seq_pairs)
+            else:
+                seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, original_indices),
+                                   key=lambda p: len(p[0]), reverse=True)
+                src, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, original_indices = zip(*seq_pairs)
         else:
-            seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, original_indices),
-                               key=lambda p: len(p[0]), reverse=True)
-            src, src_oov, oov_lists, src_str, trg_str, original_indices = zip(*seq_pairs)
+            if self.title_guided:
+                seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, original_indices, title, title_oov),
+                                   key=lambda p: len(p[0]), reverse=True)
+                src, src_oov, oov_lists, src_str, trg_str, original_indices, title, title_oov = zip(*seq_pairs)
+            else:
+                seq_pairs = sorted(zip(src, src_oov, oov_lists, src_str, trg_str, original_indices),
+                                   key=lambda p: len(p[0]), reverse=True)
+                src, src_oov, oov_lists, src_str, trg_str, original_indices = zip(*seq_pairs)
 
         # pad the src and target sequences with <pad> token and convert to LongTensor
         src, src_lens, src_mask = self._pad(src)
@@ -213,7 +246,11 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         else:
             trg_lens, trg_mask = None, None
 
-        return src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, original_indices
+        if self.title_guided:
+            title, title_lens, title_mask = self._pad(title)
+            title_oov, _, _ = self._pad(title_oov)
+
+        return src, src_lens, src_mask, src_oov, oov_lists, src_str, trg_str, trg, trg_oov, trg_lens, trg_mask, original_indices, title, title_oov, title_lens, title_mask
 
     def collate_fn_one2many_hier(self, batches):
         assert self.type == 'one2many', 'The type of dataset should be one2many.'
@@ -453,15 +490,15 @@ def tokenize_filter_data(
     return return_pairs
 
 
-def build_interactive_predict_dataset(tokenized_src, word2idx, idx2word, opt):
+def build_interactive_predict_dataset(tokenized_src, word2idx, idx2word, opt, title_list=None):
     # build a dummy trg list, and then combine it with src, and pass it to the build_dataset method
     num_lines = len(tokenized_src)
     tokenized_trg = [['.']] * num_lines  # create a dummy tokenized_trg
     tokenized_src_trg_pairs = list(zip(tokenized_src, tokenized_trg))
-    return build_dataset(tokenized_src_trg_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True)
+    return build_dataset(tokenized_src_trg_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True, title_list=title_list)
 
 
-def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', include_original=False):
+def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', include_original=False, title_list=None):
     '''
     Standard process for copy model
     :param mode: one2one or one2many
@@ -472,12 +509,19 @@ def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', inclu
     oov_target = 0
     max_oov_len = 0
     max_oov_sent = ''
+    if title_list != None:
+        assert len(title_list) == len(src_trgs_pairs)
 
     for idx, (source, targets) in enumerate(src_trgs_pairs):
         # if w is not seen in training data vocab (word2idx, size could be larger than opt.vocab_size), replace with <unk>
-        src_all = [word2idx[w] if w in word2idx else word2idx[UNK_WORD] for w in source]
+        #src_all = [word2idx[w] if w in word2idx else word2idx[UNK_WORD] for w in source]
         # if w's id is larger than opt.vocab_size, replace with <unk>
         src = [word2idx[w] if w in word2idx and word2idx[w] < opt.vocab_size else word2idx[UNK_WORD] for w in source]
+
+        if title_list is not None:
+            title_word_list = title_list[idx]
+            #title_all = [word2idx[w] if w in word2idx else word2idx[UNK_WORD] for w in title_word_list]
+            title = [word2idx[w] if w in word2idx and word2idx[w] < opt.vocab_size else word2idx[UNK_WORD] for w in title_word_list]
 
         # create a local vocab for the current source text. If there're V words in the vocab of this string, len(itos)=V+2 (including <unk> and <pad>), len(stoi)=V+1 (including <pad>)
         src_oov, oov_dict, oov_list = extend_vocab_OOV(source, word2idx, opt.vocab_size, opt.max_unk_words)
@@ -493,6 +537,9 @@ def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', inclu
             example['src'] = src
             # example['src_input'] = [word2idx[BOS_WORD]] + src + [word2idx[EOS_WORD]] # target input, requires BOS at the beginning
             # example['src_all']   = src_all
+
+            if title_list is not None:
+                example['title'] = title
 
             trg = [word2idx[w] if w in word2idx and word2idx[w] < opt.vocab_size else word2idx[UNK_WORD] for w in target]
             example['trg'] = trg
@@ -516,8 +563,19 @@ def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', inclu
                     trg_copy.append(oov_dict[w])
                 else:
                     trg_copy.append(word2idx[UNK_WORD])
-
             example['trg_copy'] = trg_copy
+
+            if title_list is not None:
+                title_oov = []
+                for w in title_word_list:
+                    if w in word2idx and word2idx[w] < opt.vocab_size:
+                        title_oov.append(word2idx[w])
+                    elif w in oov_dict:
+                        title_oov.append(oov_dict[w])
+                    else:
+                        title_oov.append(word2idx[UNK_WORD])
+                example['title_oov'] = title_oov
+
             # example['trg_copy_input'] = [word2idx[BOS_WORD]] + trg_copy + [word2idx[EOS_WORD]] # target input, requires BOS at the beginning
             # example['trg_copy_loss']  = example['trg_copy'] + [word2idx[EOS_WORD]] # target for loss computation, ignore BOS
 
@@ -572,7 +630,7 @@ def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', inclu
             o2m_example = {}
             keys = examples[0].keys()
             for key in keys:
-                if key.startswith('src') or key.startswith('oov'):
+                if key.startswith('src') or key.startswith('oov') or key.startswith('title'):
                     o2m_example[key] = examples[0][key]
                 else:
                     o2m_example[key] = [e[key] for e in examples]
@@ -584,6 +642,8 @@ def build_dataset(src_trgs_pairs, word2idx, idx2word, opt, mode='one2one', inclu
                 assert len(o2m_example['src']) == len(o2m_example['src_oov'])
                 assert len(o2m_example['oov_dict']) == len(o2m_example['oov_list'])
                 assert len(o2m_example['trg']) == len(o2m_example['trg_copy'])
+            if title_list is not None:
+                assert len(o2m_example['title']) == len(o2m_example['title_oov'])
 
             return_examples.append(o2m_example)
 

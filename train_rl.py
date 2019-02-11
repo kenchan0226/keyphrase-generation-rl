@@ -135,7 +135,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
 
 def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
-    src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = one2many_batch
+    src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _, title, title_oov, title_lens, title_mask = one2many_batch
     """
     src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
     src_lens: a list containing the length of src sequences for each batch, with len=batch
@@ -158,6 +158,11 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     # trg = trg.to(opt.device)
     # trg_mask = trg_mask.to(opt.device)
     # trg_oov = trg_oov.to(opt.device)
+
+    if opt.title_guided:
+        title = title.to(opt.device)
+        title_mask = title_mask.to(opt.device)
+        #title_oov = title_oov.to(opt.device)
 
     optimizer.zero_grad()
 
@@ -190,7 +195,7 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
     start_time = time.time()
     sample_list, log_selected_token_dist, output_mask, pred_eos_idx_mask, entropy, location_of_eos_for_each_batch, location_of_peos_for_each_batch = generator.sample(
         src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=False, one2many=one2many,
-        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, entropy_regularize=entropy_regularize)
+        one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=perturb_std, entropy_regularize=entropy_regularize, title=title, title_lens=title_lens, title_mask=title_mask)
     pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk,
                               src_str_list, opt.separate_present_absent, pykp.io.PEOS_WORD)
     sample_time = time_since(start_time)
@@ -211,7 +216,10 @@ def train_one_batch(one2many_batch, generator, optimizer, opt, perturb_std=0):
                                                                              greedy=True, one2many=one2many,
                                                                              one2many_mode=one2many_mode,
                                                                              num_predictions=num_predictions,
-                                                                             perturb_std=baseline_perturb_std)
+                                                                             perturb_std=baseline_perturb_std,
+                                                                                      title=title,
+                                                                                      title_lens=title_lens,
+                                                                                      title_mask=title_mask)
             greedy_str_2dlist = sample_list_to_str_2dlist(greedy_sample_list, oov_lists, opt.idx2word, opt.vocab_size,
                                                           eos_idx,
                                                           delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk,

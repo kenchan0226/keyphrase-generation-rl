@@ -76,14 +76,18 @@ def main(opt):
     src_file = opt.src_file
     #trg_file = opt.trg_file
     #tokenized_train_pairs = read_src_and_trg_files(src_file, trg_file, is_train=False, remove_eos=opt.remove_title_eos)  # 2d list of word
-    tokenized_src = read_tokenized_src_file(src_file, remove_eos=opt.remove_title_eos)
+    if opt.title_guided:
+        tokenized_src, tokenized_title = read_tokenized_src_file(src_file, remove_eos=opt.remove_title_eos, title_guided=True)
+    else:
+        tokenized_src = read_tokenized_src_file(src_file, remove_eos=opt.remove_title_eos, title_guided=False)
+        tokenized_title = None
     # convert the 2d list of words to a list of dictionary, with keys 'src', 'src_oov', 'trg', 'trg_copy', 'src_str', 'trg_str', 'oov_dict', 'oov_list'
     # since we don't need the targets during testing, 'trg' and 'trg_copy' are some dummy variables
     #test_one2many = build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode="one2many", include_original=True)
-    test_one2many = build_interactive_predict_dataset(tokenized_src, word2idx, idx2word, opt)
+    test_one2many = build_interactive_predict_dataset(tokenized_src, word2idx, idx2word, opt, tokenized_title)
     # build the data loader
     test_one2many_dataset = KeyphraseDataset(test_one2many, word2idx=word2idx, idx2word=idx2word,
-                                             type='one2many', delimiter_type=opt.delimiter_type, load_train=False, remove_src_eos=opt.remove_src_eos)
+                                             type='one2many', delimiter_type=opt.delimiter_type, load_train=False, remove_src_eos=opt.remove_src_eos, title_guided=opt.title_guided)
     test_loader = DataLoader(dataset=test_one2many_dataset,
                              collate_fn=test_one2many_dataset.collate_fn_one2many,
                              num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True,

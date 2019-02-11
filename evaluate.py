@@ -29,9 +29,9 @@ def evaluate_loss(data_loader, model, opt):
     with torch.no_grad():
         for batch_i, batch in enumerate(data_loader):
             if not opt.one2many:  # load one2one dataset
-                src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
+                src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists, title, title_oov, title_lens, title_mask = batch
             else:  # load one2many dataset
-                src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
+                src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _, title, title_oov, title_lens, title_mask = batch
                 num_trgs = [len(trg_str_list) for trg_str_list in
                             trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
 
@@ -47,12 +47,16 @@ def evaluate_loss(data_loader, model, opt):
             trg_mask = trg_mask.to(opt.device)
             src_oov = src_oov.to(opt.device)
             trg_oov = trg_oov.to(opt.device)
+            if opt.title_guided:
+                title = title.to(opt.device)
+                title_mask = title_mask.to(opt.device)
+                # title_oov = title_oov.to(opt.device)
 
             start_time = time.time()
             if not opt.one2many:
-                decoder_dist, h_t, attention_dist, encoder_final_state, coverage, _, _, _ = model(src, src_lens, trg, src_oov, max_num_oov, src_mask)
+                decoder_dist, h_t, attention_dist, encoder_final_state, coverage, _, _, _ = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, title=title, title_lens=title_lens, title_mask=title_mask)
             else:
-                decoder_dist, h_t, attention_dist, encoder_final_state, coverage, _, _, _ = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs)
+                decoder_dist, h_t, attention_dist, encoder_final_state, coverage, _, _, _ = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs, title=title, title_lens=title_lens, title_mask=title_mask)
             forward_time = time_since(start_time)
             forward_time_total += forward_time
 
@@ -94,7 +98,7 @@ def evaluate_reward(data_loader, generator, opt):
     with torch.no_grad():
         for batch_i, batch in enumerate(data_loader):
             # load one2many dataset
-            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _, title, title_oov, title_lens, title_mask = batch
             num_trgs = [len(trg_str_list) for trg_str_list in
                         trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
 
@@ -108,13 +112,17 @@ def evaluate_reward(data_loader, generator, opt):
             #trg = trg.to(opt.device)
             #trg_mask = trg_mask.to(opt.device)
             #trg_oov = trg_oov.to(opt.device)
+            if opt.title_guided:
+                title = title.to(opt.device)
+                title_mask = title_mask.to(opt.device)
+                # title_oov = title_oov.to(opt.device)
 
             start_time = time.time()
             # sample a sequence
             # sample_list is a list of dict, {"prediction": [], "scores": [], "attention": [], "done": True}, preidiction is a list of 0 dim tensors
             sample_list, log_selected_token_dist, output_mask, pred_idx_mask, _, _, _ = generator.sample(
                 src, src_lens, src_oov, src_mask, oov_lists, opt.max_length, greedy=True, one2many=one2many,
-                one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=0)
+                one2many_mode=one2many_mode, num_predictions=num_predictions, perturb_std=0, title=title, title_lens=title_lens, title_mask=title_mask)
             #pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx, delimiter_word)
             pred_str_2dlist = sample_list_to_str_2dlist(sample_list, oov_lists, opt.idx2word, opt.vocab_size, eos_idx,
                                                         delimiter_word, opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk,
@@ -131,6 +139,7 @@ def evaluate_reward(data_loader, generator, opt):
 
     return eval_reward_stat
 
+"""
 def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
     # file for storing the predicted keyphrases
     if opt.pred_file_prefix == "":
@@ -161,6 +170,10 @@ def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
             # trg = trg.to(opt.device)
             # trg_mask = trg_mask.to(opt.device)
             # trg_oov = trg_oov.to(opt.device)
+            if opt.title_guided:
+                title = title.to(opt.device)
+                title_mask = title_mask.to(opt.device)
+                # title_oov = title_oov.to(opt.device)
 
             eos_idx = opt.word2idx[pykp.io.EOS_WORD]
             batch_size = src.size(0)
@@ -201,6 +214,7 @@ def prediction_by_sampling(generator, data_loader, opt, delimiter_word):
     pred_output_file.close()
     print("done!")
     return pred_str_2dlist
+"""
 
 '''
 def check_present_and_duplicate_keyphrases(src_str, keyphrase_str_list):
@@ -314,7 +328,7 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
                 print("Batch %d: Time for running beam search on %d batches : %.1f" % (batch_i+1, interval, time_since(start_time)))
                 sys.stdout.flush()
                 start_time = time.time()
-            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, _, _, _, _, original_idx_list = batch
+            src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, _, _, _, _, original_idx_list, title, title_oov, title_lens, title_mask = batch
             """
             src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
             src_lens: a list containing the length of src sequences for each batch, with len=batch
@@ -325,8 +339,13 @@ def evaluate_beam_search(generator, one2many_data_loader, opt, delimiter_word='<
             src = src.to(opt.device)
             src_mask = src_mask.to(opt.device)
             src_oov = src_oov.to(opt.device)
+            if opt.title_guided:
+                title = title.to(opt.device)
+                title_mask = title_mask.to(opt.device)
+                # title_oov = title_oov.to(opt.device)
 
-            beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.word2idx, opt.max_eos_per_output_seq)
+
+            beam_search_result = generator.beam_search(src, src_lens, src_oov, src_mask, oov_lists, opt.word2idx, opt.max_eos_per_output_seq, title=title, title_lens=title_lens, title_mask=title_mask)
             pred_list = preprocess_beam_search_result(beam_search_result, opt.idx2word, opt.vocab_size, oov_lists, opt.word2idx[pykp.io.EOS_WORD], opt.word2idx[pykp.io.UNK_WORD], opt.replace_unk, src_str_list)
             # list of {"sentences": [], "scores": [], "attention": []}
 

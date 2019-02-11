@@ -159,7 +159,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
 def train_one_batch(batch, model, optimizer, opt, batch_i, source_representation_queue=None):
     if not opt.one2many:  # load one2one data
-        src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists = batch
+        src, src_lens, src_mask, trg, trg_lens, trg_mask, src_oov, trg_oov, oov_lists, title, title_oov, title_lens, title_mask = batch
         """
         src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
         src_lens: a list containing the length of src sequences for each batch, with len=batch
@@ -171,7 +171,7 @@ def train_one_batch(batch, model, optimizer, opt, batch_i, source_representation
         trg_oov: a LongTensor containing the word indices of target sentences, [batch, src_seq_len], contains the index of oov words (used by copy)
         """
     else:  # load one2many data
-        src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _ = batch
+        src, src_lens, src_mask, src_oov, oov_lists, src_str_list, trg_str_2dlist, trg, trg_oov, trg_lens, trg_mask, _, title, title_oov, title_lens, title_mask = batch
         num_trgs = [len(trg_str_list) for trg_str_list in trg_str_2dlist]  # a list of num of targets in each batch, with len=batch_size
         """
         trg: LongTensor [batch, trg_seq_len], each target trg[i] contains the indices of a set of concatenated keyphrases, separated by opt.word2idx[pykp.io.SEP_WORD]
@@ -188,6 +188,11 @@ def train_one_batch(batch, model, optimizer, opt, batch_i, source_representation
     trg_mask = trg_mask.to(opt.device)
     src_oov = src_oov.to(opt.device)
     trg_oov = trg_oov.to(opt.device)
+    if opt.title_guided:
+        title = title.to(opt.device)
+        title_mask = title_mask.to(opt.device)
+        #title_oov = title_oov.to(opt.device)
+    # title, title_oov, title_lens, title_mask
 
     optimizer.zero_grad()
 
@@ -224,9 +229,9 @@ def train_one_batch(batch, model, optimizer, opt, batch_i, source_representation
         """
 
     if not opt.one2many:
-        decoder_dist, h_t, attention_dist, encoder_final_state, coverage, delimiter_decoder_states, delimiter_decoder_states_lens, source_classification_dist = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, sampled_source_representation_2dlist=source_representation_samples_2dlist, source_representation_target_list=source_representation_target_list)
+        decoder_dist, h_t, attention_dist, encoder_final_state, coverage, delimiter_decoder_states, delimiter_decoder_states_lens, source_classification_dist = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, sampled_source_representation_2dlist=source_representation_samples_2dlist, source_representation_target_list=source_representation_target_list, title=title, title_lens=title_lens, title_mask=title_mask)
     else:
-        decoder_dist, h_t, attention_dist, encoder_final_state, coverage, delimiter_decoder_states, delimiter_decoder_states_lens, source_classification_dist = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs=num_trgs, sampled_source_representation_2dlist=source_representation_samples_2dlist, source_representation_target_list=source_representation_target_list)
+        decoder_dist, h_t, attention_dist, encoder_final_state, coverage, delimiter_decoder_states, delimiter_decoder_states_lens, source_classification_dist = model(src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs=num_trgs, sampled_source_representation_2dlist=source_representation_samples_2dlist, source_representation_target_list=source_representation_target_list, title=title, title_lens=title_lens, title_mask=title_mask)
     forward_time = time_since(start_time)
 
     if opt.use_target_encoder:  # Put all the encoder final states to the queue. Need to call detach() first

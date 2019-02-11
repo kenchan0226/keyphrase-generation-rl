@@ -5,6 +5,7 @@ import pickle
 import pykp.io
 import config
 
+
 def read_tokenized_src_file(path, remove_eos=True):
     """
     read tokenized source text file and convert them to list of list of words
@@ -30,6 +31,47 @@ def read_tokenized_src_file(path, remove_eos=True):
             data.append(word_list)
     return data
 
+
+def read_tokenized_src_file(path, remove_eos=True, title_guided=False):
+    """
+    read tokenized source text file and convert them to list of list of words
+    :param path:
+    :param remove_eos: concatenate the words in title and content
+    :return: data, a 2d list, each item in the list is a list of words of a src text, len(data) = num_lines
+    """
+    tokenized_train_src = []
+    if title_guided:
+        tokenized_train_title = []
+    filtered_cnt = 0
+    for line_idx, src_line in enumerate(open(path, 'r')):
+        # process source line
+        title_and_context = src_line.strip().split('<eos>')
+        if len(title_and_context) == 1:  # it only has context without title
+            [context] = title_and_context
+            src_word_list = context.strip().split(' ')
+            if title_guided:
+                raise ValueError("The source text does not contains any title, so you cannot return title.")
+        elif len(title_and_context) == 2:
+            [title, context] = title_and_context
+            title_word_list = title.strip().split(' ')
+            context_word_list = context.strip().split(' ')
+            if remove_eos:
+                src_word_list = title_word_list + context_word_list
+            else:
+                src_word_list = title_word_list + ['<eos>'] + context_word_list
+        else:
+            raise ValueError("The source text contains more than one title")
+        # Append the lines to the data
+        tokenized_train_src.append(src_word_list)
+        if title_guided:
+            tokenized_train_title.append(title_word_list)
+
+    if title_guided:
+        return tokenized_train_src, tokenized_train_title
+    else:
+        return tokenized_train_src
+
+
 def read_tokenized_trg_file(path):
     """
     read tokenized target text file and convert them to list of list of words
@@ -44,26 +86,33 @@ def read_tokenized_trg_file(path):
             data.append(trg_word_list)
     return data
 
-def read_src_and_trg_files(src_file, trg_file, is_train, remove_eos=True):
+
+def read_src_and_trg_files(src_file, trg_file, is_train, remove_eos=True, title_guided=False):
     tokenized_train_src = []
     tokenized_train_trg = []
+    if title_guided:
+        tokenized_train_title = []
     filtered_cnt = 0
-    for src_line, trg_line in zip(open(src_file, 'r'), open(trg_file, 'r')):
+    for line_idx, (src_line, trg_line) in enumerate(zip(open(src_file, 'r'), open(trg_file, 'r'))):
         # process source line
-        if remove_eos:
-            title_and_context = src_line.strip().split('<eos>')
-            if len(title_and_context) == 1:  # it only has context without title
-                [context] = title_and_context
-                src_word_list = context.strip().split(' ')
-            elif len(title_and_context) == 2:
-                [title, context] = title_and_context
-                src_word_list = title.strip().split(' ') + context.strip().split(' ')
+        if (len(src_line.strip()) == 0) and is_train:
+            continue
+        title_and_context = src_line.strip().split('<eos>')
+        if len(title_and_context) == 1:  # it only has context without title
+            [context] = title_and_context
+            src_word_list = context.strip().split(' ')
+            if title_guided:
+                raise ValueError("The source text does not contains any title, so you cannot return title.")
+        elif len(title_and_context) == 2:
+            [title, context] = title_and_context
+            title_word_list = title.strip().split(' ')
+            context_word_list = context.strip().split(' ')
+            if remove_eos:
+                src_word_list = title_word_list + context_word_list
             else:
-                raise ValueError("The source text contains more than one title")
-            #[title, context] = src_line.strip().split('<eos>')
-            #src_word_list = title.strip().split(' ') + context.strip().split(' ')
+                src_word_list = title_word_list + ['<eos>'] + context_word_list
         else:
-            src_word_list = src_line.strip().split(' ')
+            raise ValueError("The source text contains more than one title")
         # process target line
         trg_list = trg_line.strip().split(';')  # a list of target sequences
         trg_word_list = [trg.split(' ') for trg in trg_list]
@@ -75,6 +124,8 @@ def read_src_and_trg_files(src_file, trg_file, is_train, remove_eos=True):
         # Append the lines to the data
         tokenized_train_src.append(src_word_list)
         tokenized_train_trg.append(trg_word_list)
+        if title_guided:
+            tokenized_train_title.append(title_word_list)
 
     assert len(tokenized_train_src) == len(
         tokenized_train_trg), 'the number of records in source and target are not the same'
@@ -82,7 +133,12 @@ def read_src_and_trg_files(src_file, trg_file, is_train, remove_eos=True):
     print("%d rows filtered" % filtered_cnt)
 
     tokenized_train_pairs = list(zip(tokenized_train_src, tokenized_train_trg))
-    return tokenized_train_pairs
+
+    if title_guided:
+        return tokenized_train_pairs, tokenized_train_title
+    else:
+        return tokenized_train_pairs
+
 
 def build_vocab(tokenized_src_trg_pairs, include_peos):
     token_freq_counter = Counter()
@@ -120,6 +176,7 @@ def build_vocab(tokenized_src_trg_pairs, include_peos):
 
     return word2idx, idx2word, token_freq_counter
 
+
 def main(opt):
     # Preprocess training data
     """
@@ -135,9 +192,14 @@ def main(opt):
     del tokenized_train_src
     del tokenized_train_trg
     """
+    title_guided = opt.title_guided
 
     # Tokenize train_src and train_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
-    tokenized_train_pairs = read_src_and_trg_files(opt.train_src, opt.train_trg, is_train=True, remove_eos=opt.remove_eos)
+    if title_guided:
+        tokenized_train_pairs, tokenized_train_title = read_src_and_trg_files(opt.train_src, opt.train_trg, is_train=True, remove_eos=opt.remove_eos, title_guided=True)
+    else:
+        tokenized_train_pairs = read_src_and_trg_files(opt.train_src, opt.train_trg, is_train=True, remove_eos=opt.remove_eos, title_guided=False)
+        tokenized_train_title = None
 
     # build vocab from training src
     # build word2id, id2word, and vocab, where vocab is a counter
@@ -147,7 +209,7 @@ def main(opt):
     word2idx, idx2word, token_freq_counter = build_vocab(tokenized_train_pairs, opt.include_peos)
 
     # building preprocessed training set for one2one training mode
-    train_one2one = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2one', include_original=True)
+    train_one2one = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2one', include_original=True, title_list=tokenized_train_title)
     # a list of dict, with fields src, trg, src_oov, oov_dict, oov_list, etc.
 
     print("Dumping train one2one to disk: %s" % (opt.data_dir + '/train.one2one.pt'))
@@ -155,7 +217,7 @@ def main(opt):
     len_train_one2one = len(train_one2one)
     del train_one2one
     # building preprocessed training set for one2many training mode
-    train_one2many = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True)
+    train_one2many = pykp.io.build_dataset(tokenized_train_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True, title_list=tokenized_train_title)
     print("Dumping train one2many to disk: %s" % (opt.data_dir + '/train.one2many.pt'))
     torch.save(train_one2many, open(opt.data_dir + '/train.one2many.pt', 'wb'))
     len_train_one2many = len(train_one2many)
@@ -174,13 +236,17 @@ def main(opt):
     del tokenized_valid_trg
     """
     # Tokenize valid_src and valid_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
-    tokenized_valid_pairs = read_src_and_trg_files(opt.valid_src, opt.valid_trg, is_train=False, remove_eos=opt.remove_eos)
+    if title_guided:
+        tokenized_valid_pairs, tokenized_valid_title = read_src_and_trg_files(opt.valid_src, opt.valid_trg, is_train=False, remove_eos=opt.remove_eos, title_guided=True)
+    else:
+        tokenized_valid_pairs = read_src_and_trg_files(opt.valid_src, opt.valid_trg, is_train=False, remove_eos=opt.remove_eos, title_guided=False)
+        tokenized_valid_title = None
 
     # building preprocessed validation set for one2one and one2many training mode
     valid_one2one = pykp.io.build_dataset(
-        tokenized_valid_pairs, word2idx, idx2word, opt, mode='one2one', include_original=True)
+        tokenized_valid_pairs, word2idx, idx2word, opt, mode='one2one', include_original=True, title_list=tokenized_valid_title)
     valid_one2many = pykp.io.build_dataset(
-        tokenized_valid_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True)
+        tokenized_valid_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True, title_list=tokenized_valid_title)
 
     print("Dumping valid to disk: %s" % (opt.data_dir + '/valid.pt'))
     torch.save(valid_one2one, open(opt.data_dir+ '/valid.one2one.pt', 'wb'))
@@ -198,13 +264,18 @@ def main(opt):
     del tokenized_test_trg
     """
     # Tokenize train_src and train_trg, return a list of tuple, (src_word_list, [trg_1_word_list, trg_2_word_list, ...])
-    tokenized_test_pairs = read_src_and_trg_files(opt.test_src, opt.test_trg, is_train=False, remove_eos=opt.remove_eos)
+    if title_guided:
+        tokenized_test_pairs, tokenized_test_title = read_src_and_trg_files(opt.test_src, opt.test_trg, is_train=False, remove_eos=opt.remove_eos, title_guided=True)
+    else:
+        tokenized_test_pairs = read_src_and_trg_files(opt.test_src, opt.test_trg, is_train=False,
+                                                      remove_eos=opt.remove_eos, title_guided=False)
+        tokenized_test_title = None
 
     # building preprocessed test set for one2one and one2many training mode
     test_one2one = pykp.io.build_dataset(
-        tokenized_test_pairs, word2idx, idx2word, opt, mode='one2one', include_original=True)
+        tokenized_test_pairs, word2idx, idx2word, opt, mode='one2one', include_original=True, title_list=tokenized_test_title)
     test_one2many = pykp.io.build_dataset(
-        tokenized_test_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True)
+        tokenized_test_pairs, word2idx, idx2word, opt, mode='one2many', include_original=True, title_list=tokenized_test_title)
 
     print("Dumping test to disk: %s" % (opt.data_dir + '/valid.pt'))
     torch.save(test_one2one, open(opt.data_dir + '/test.one2one.pt', 'wb'))
@@ -247,6 +318,7 @@ if __name__ == "__main__":
     parser.add_argument('-data_dir', required=True, help='The source file of the data')
     parser.add_argument('-remove_eos', action="store_true", help='Remove the eos after the title')
     parser.add_argument('-include_peos', action="store_true", help='Include <peos> as a special token')
+    parser.add_argument('-title_guided', action="store_true", help='Allow easy access to the title of the source text.')
 
     config.vocab_opts(parser)
     #parser.add_argument('-vocab_size', default=50000, type=int, help='Max. number of words in vocab')

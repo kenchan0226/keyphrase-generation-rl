@@ -139,6 +139,15 @@ def init_model(opt):
         # TODO: load the saved model and override the current one
     elif opt.train_rl and opt.pretrained_model != "":
         model.load_state_dict(torch.load(opt.pretrained_model))
+        """
+        pretrained_state_dict = torch.load(opt.pretrained_model)
+        pretrained_state_dict_renamed = {}
+        for k, v in pretrained_state_dict.items():
+            if k.startswith("encoder.rnn."):
+                k = k.replace("encoder.rnn.", "encoder.encoder.rnn.", 1)
+            pretrained_state_dict_renamed[k] = v
+        model.load_state_dict(pretrained_state_dict_renamed)
+        """
     return model.to(opt.device)
 
 
@@ -206,7 +215,7 @@ if __name__ == "__main__":
     if opt.goal_vector_mode > 0 and not opt.separate_present_absent:
         raise ValueError("To use goal vector, you must use the option -separate_present_absent")
 
-    if opt.topk != 'M':
+    if opt.topk != 'M' and opt.topk != 'G':
         opt.topk = int(opt.topk)
 
     logging = config.init_logging(log_file=opt.exp_path + '/output.log', stdout=True)

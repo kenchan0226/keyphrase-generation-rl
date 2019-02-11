@@ -129,8 +129,8 @@ class Attention(nn.Module):
         scores = scores.view(-1, max_input_seq_len)  # [batch_size, max_input_seq_len]
         """
 
-        scores = self.score(memory_bank, decoder_state, coverage)
-        attn_dist = self.softmax(scores, mask=src_mask)
+        scores = self.score(memory_bank, decoder_state, coverage)  # [batch_size, max_input_seq_len]
+        attn_dist = self.softmax(scores, mask=src_mask)  # src_mask: [batch_size, max_input_seq_len]
 
         # Compute weighted sum of memory bank features
         attn_dist = attn_dist.unsqueeze(1) # [batch_size, 1, max_input_seq_len]

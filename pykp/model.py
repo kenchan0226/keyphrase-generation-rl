@@ -5,7 +5,7 @@ import numpy as np
 import random
 import pykp
 from pykp.mask import GetMask, masked_softmax, TimeDistributedDense
-from pykp.rnn_encoder import RNNEncoder
+from pykp.rnn_encoder import *
 from pykp.rnn_decoder import RNNDecoder
 from pykp.target_encoder import TargetEncoder
 from pykp.attention import Attention
@@ -59,6 +59,7 @@ class Seq2SeqModel(nn.Module):
         self.goal_vector_mode = opt.goal_vector_mode
         self.goal_vector_size = opt.goal_vector_size
         self.manager_mode = opt.manager_mode
+        self.title_guided = opt.title_guided
 
         if self.separate_present_absent:
             self.peos_idx = opt.word2idx[pykp.io.PEOS_WORD]
@@ -100,15 +101,26 @@ class Seq2SeqModel(nn.Module):
             self.pad_idx_src
         )
         '''
-        self.encoder = RNNEncoder(
-            vocab_size=self.vocab_size,
-            embed_size=self.emb_dim,
-            hidden_size=self.encoder_size,
-            num_layers=self.enc_layers,
-            bidirectional=self.bidirectional,
-            pad_token=self.pad_idx_src,
-            dropout=self.dropout
-        )
+        if self.title_guided:
+            self.encoder = RNNEncoderTG(
+                vocab_size=self.vocab_size,
+                embed_size=self.emb_dim,
+                hidden_size=self.encoder_size,
+                num_layers=self.enc_layers,
+                bidirectional=self.bidirectional,
+                pad_token=self.pad_idx_src,
+                dropout=self.dropout
+            )
+        else:
+            self.encoder = RNNEncoderBasic(
+                vocab_size=self.vocab_size,
+                embed_size=self.emb_dim,
+                hidden_size=self.encoder_size,
+                num_layers=self.enc_layers,
+                bidirectional=self.bidirectional,
+                pad_token=self.pad_idx_src,
+                dropout=self.dropout
+            )
 
         self.decoder = RNNDecoder(
             vocab_size=self.vocab_size,
@@ -184,7 +196,7 @@ class Seq2SeqModel(nn.Module):
         #self.encoder2decoder_cell.bias.data.fill_(0)
         #self.decoder2vocab.bias.data.fill_(0)
 
-    def forward(self, src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs=None, sampled_source_representation_2dlist=None, source_representation_target_list=None):
+    def forward(self, src, src_lens, trg, src_oov, max_num_oov, src_mask, num_trgs=None, sampled_source_representation_2dlist=None, source_representation_target_list=None, title=None, title_lens=None, title_mask=None):
         """
         :param src: a LongTensor containing the word indices of source sentences, [batch, src_seq_len], with oov words replaced by unk idx
         :param src_lens: a list containing the length of src sequences for each batch, with len=batch, with oov words replaced by unk idx
@@ -200,7 +212,7 @@ class Seq2SeqModel(nn.Module):
         batch_size, max_src_len = list(src.size())
 
         # Encoding
-        memory_bank, encoder_final_state = self.encoder(src, src_lens)
+        memory_bank, encoder_final_state = self.encoder(src, src_lens, src_mask, title, title_lens, title_mask)
         assert memory_bank.size() == torch.Size([batch_size, max_src_len, self.num_directions * self.encoder_size])
         assert encoder_final_state.size() == torch.Size([batch_size, self.num_directions * self.encoder_size])
 

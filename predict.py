@@ -6,7 +6,7 @@ from pykp.io import KeyphraseDataset
 from torch.utils.data import DataLoader
 import time
 from utils.time_log import time_since
-from evaluate import evaluate_beam_search, prediction_by_sampling
+from evaluate import evaluate_beam_search
 import pykp.io
 import sys
 import argparse
@@ -18,6 +18,15 @@ import os
 def init_pretrained_model(opt):
     model = Seq2SeqModel(opt)
     model.load_state_dict(torch.load(opt.model))
+    """
+    pretrained_state_dict = torch.load(opt.model)
+    pretrained_state_dict_renamed = {}
+    for k, v in pretrained_state_dict.items():
+        if k.startswith("encoder.rnn."):
+            k = k.replace("encoder.rnn.", "encoder.encoder.rnn.", 1)
+        pretrained_state_dict_renamed[k] = v
+    model.load_state_dict(pretrained_state_dict_renamed)
+    """
     model.to(opt.device)
     model.eval()
     return model
@@ -123,7 +132,8 @@ def predict(test_data_loader, model, opt):
         evaluate_beam_search(generator, test_data_loader, opt, delimiter_word)
     """
     if opt.sampling:
-        prediction_by_sampling(generator, test_data_loader, opt, delimiter_word)
+        raise ValueError("Not support yet!")
+        #prediction_by_sampling(generator, test_data_loader, opt, delimiter_word)
     else:
         evaluate_beam_search(generator, test_data_loader, opt, delimiter_word)
 

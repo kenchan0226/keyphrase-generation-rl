@@ -222,7 +222,7 @@ def prepare_classification_result_dict(precision_k, recall_k, f1_k, num_matches_
             'num_predictions@%d_%s' % (topk, present_tag): num_predictions_k, 'num_targets@%d_%s' % (topk, present_tag): num_targets_k}
 
 
-def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, topk=5):
+def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, topk=5, meng_rui_precision=False):
     """
     :param is_match: a boolean np array with size [num_predictions]
     :param predicted_list:
@@ -233,12 +233,23 @@ def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, top
     assert is_match.shape[0] == num_predictions
     if topk == 'M':
         topk = num_predictions
+    elif topk == 'G':
+        #topk = num_trgs
+        if num_predictions < num_trgs:
+            topk = num_trgs
+        else:
+            topk = num_predictions
 
-    if num_predictions > topk:
-        is_match = is_match[:topk]
-        num_predictions_k = topk
+    if meng_rui_precision:
+        if num_predictions > topk:
+            is_match = is_match[:topk]
+            num_predictions_k = topk
+        else:
+            num_predictions_k = num_predictions
     else:
-        num_predictions_k = num_predictions
+        if num_predictions > topk:
+            is_match = is_match[:topk]
+        num_predictions_k = topk
 
     num_matches_k = sum(is_match)
 
@@ -247,7 +258,7 @@ def compute_classification_metrics_at_k(is_match, num_predictions, num_trgs, top
     return precision_k, recall_k, f1_k, num_matches_k, num_predictions_k
 
 
-def compute_classification_metrics_at_ks(is_match, num_predictions, num_trgs, k_list=[5,10]):
+def compute_classification_metrics_at_ks(is_match, num_predictions, num_trgs, k_list=[5,10], meng_rui_precision=False):
     """
     :param is_match: a boolean np array with size [num_predictions]
     :param predicted_list:
@@ -273,12 +284,26 @@ def compute_classification_metrics_at_ks(is_match, num_predictions, num_trgs, k_
         for topk in k_list:
             if topk == 'M':
                 topk = num_predictions
-            if num_predictions > topk:
-                num_matches_at_k = num_matches[topk-1]
-                num_predictions_at_k = topk
+            elif topk == 'G':
+                #topk = num_trgs
+                if num_predictions < num_trgs:
+                    topk = num_trgs
+                else:
+                    topk = num_predictions
+
+            if meng_rui_precision:
+                if num_predictions > topk:
+                    num_matches_at_k = num_matches[topk-1]
+                    num_predictions_at_k = topk
+                else:
+                    num_matches_at_k = num_matches[-1]
+                    num_predictions_at_k = num_predictions
             else:
-                num_matches_at_k = num_matches[-1]
-                num_predictions_at_k = num_predictions
+                if num_predictions > topk:
+                    num_matches_at_k = num_matches[topk - 1]
+                else:
+                    num_matches_at_k = num_matches[-1]
+                num_predictions_at_k = topk
 
             precision_k, recall_k, f1_k = compute_classification_metrics(num_matches_at_k, num_predictions_at_k, num_trgs)
             precision_ks.append(precision_k)
@@ -308,7 +333,7 @@ def compute_f1(precision, recall):
     return float(2 * (precision * recall)) / (precision + recall) if precision + recall > 0 else 0.0
 
 
-def dcg_at_k(r, k, method=1):
+def dcg_at_k(r, k, num_trgs, method=1):
     """
     Reference from https://www.kaggle.com/wendykan/ndcg-example and https://gist.github.com/bwhite/3726239
     Score is discounted cumulative gain (dcg)
@@ -328,6 +353,13 @@ def dcg_at_k(r, k, method=1):
     num_predictions = r.shape[0]
     if k == 'M':
         k = num_predictions
+    elif k == 'G':
+        #k = num_trgs
+        if num_predictions < num_trgs:
+            k = num_trgs
+        else:
+            k = num_predictions
+
     if num_predictions == 0:
         dcg = 0.
     else:
@@ -344,7 +376,7 @@ def dcg_at_k(r, k, method=1):
     return dcg
 
 
-def dcg_at_ks(r, k_list, method=1):
+def dcg_at_ks(r, k_list, num_trgs, method=1):
     num_predictions = r.shape[0]
     if num_predictions == 0:
         dcg_array = np.array([0] * len(k_list))
@@ -353,6 +385,13 @@ def dcg_at_ks(r, k_list, method=1):
         for k in k_list:
             if k == 'M':
                 k = num_predictions
+            elif k == 'G':
+                #k = num_trgs
+                if num_predictions < num_trgs:
+                    k = num_trgs
+                else:
+                    k = num_predictions
+
             if k > k_max:
                 k_max = k
         if num_predictions > k_max:
@@ -365,6 +404,13 @@ def dcg_at_ks(r, k_list, method=1):
             for k in k_list:
                 if k == 'M':
                     k = num_predictions
+                elif k == 'G':
+                    #k = num_trgs
+                    if num_predictions < num_trgs:
+                        k = num_trgs
+                    else:
+                        k = num_predictions
+
                 return_indices.append((k - 1) if k <= num_predictions else (num_predictions - 1))
             return_indices = np.array(return_indices, dtype=int)
             dcg_array = dcg[return_indices]
@@ -373,7 +419,7 @@ def dcg_at_ks(r, k_list, method=1):
     return dcg_array
 
 
-def ndcg_at_k(r, k, method=1, include_dcg=False):
+def ndcg_at_k(r, k, num_trgs, method=1, include_dcg=False):
     """Score is normalized discounted cumulative gain (ndcg)
     Relevance is positive real values.  Can use binary
     as the previous methods.
@@ -392,11 +438,11 @@ def ndcg_at_k(r, k, method=1, include_dcg=False):
         ndcg = 0.0
         dcg = 0.0
     else:
-        dcg_max = dcg_at_k(np.array(sorted(r, reverse=True)), k, method)
+        dcg_max = dcg_at_k(np.array(sorted(r, reverse=True)), k, num_trgs, method)
         if dcg_max <= 0.0:
             ndcg = 0.0
         else:
-            dcg = dcg_at_k(r, k, method)
+            dcg = dcg_at_k(r, k, num_trgs, method)
             ndcg = dcg / dcg_max
     if include_dcg:
         return ndcg, dcg
@@ -404,14 +450,14 @@ def ndcg_at_k(r, k, method=1, include_dcg=False):
         return ndcg
 
 
-def ndcg_at_ks(r, k_list, method=1, include_dcg=False):
+def ndcg_at_ks(r, k_list, num_trgs, method=1, include_dcg=False):
     if r.shape[0] == 0:
         ndcg_array = [0.0] * len(k_list)
         dcg_array = [0.0] * len(k_list)
     else:
-        dcg_array = dcg_at_ks(r, k_list, method)
+        dcg_array = dcg_at_ks(r, k_list, num_trgs, method)
         ideal_r = np.array(sorted(r, reverse=True))
-        dcg_max_array = dcg_at_ks(ideal_r, k_list, method)
+        dcg_max_array = dcg_at_ks(ideal_r, k_list, num_trgs, method)
         ndcg_array = dcg_array / dcg_max_array
         ndcg_array = np.nan_to_num(ndcg_array)
     if include_dcg:
@@ -435,6 +481,12 @@ def alpha_dcg_at_k(r_2d, k, method=1, alpha=0.5):
         num_trg_str, num_pred_str = r_2d.shape
         if k == 'M':
             k = num_pred_str
+        elif k == 'G':
+            #k = num_trg_str
+            if num_pred_str < num_trg_str:
+                k = num_trg_str
+            else:
+                k = num_pred_str
         if num_pred_str > k:
             num_pred_str = k
         gain_vector = np.zeros(num_pred_str)
@@ -442,7 +494,7 @@ def alpha_dcg_at_k(r_2d, k, method=1, alpha=0.5):
         cum_r = np.concatenate((np.zeros((num_trg_str, 1)), np.cumsum(r_2d, axis=1)), axis=1)
         for j in range(num_pred_str):
             gain_vector[j] = np.dot(r_2d[:, j], np.power(one_minus_alpha_vec, cum_r[:, j]))
-        alpha_dcg = dcg_at_k(gain_vector, k, method)
+        alpha_dcg = dcg_at_k(gain_vector, k, num_trg_str, method)
     return alpha_dcg
 
 
@@ -463,6 +515,13 @@ def alpha_dcg_at_ks(r_2d, k_list, method=1, alpha=0.5):
     for k in k_list:
         if k == 'M':
             k = num_pred_str
+        elif k == 'G':
+            #k = num_trg_str
+            if num_pred_str < num_trg_str:
+                k = num_trg_str
+            else:
+                k = num_pred_str
+
         if k > k_max:
             k_max = k
     if num_pred_str > k_max:
@@ -472,7 +531,7 @@ def alpha_dcg_at_ks(r_2d, k_list, method=1, alpha=0.5):
     cum_r = np.concatenate((np.zeros((num_trg_str, 1)), np.cumsum(r_2d, axis=1)), axis=1)
     for j in range(num_pred_str):
         gain_vector[j] = np.dot(r_2d[:, j], np.power(one_minus_alpha_vec, cum_r[:, j]))
-    return dcg_at_ks(gain_vector, k_list, method)
+    return dcg_at_ks(gain_vector, k_list, num_trg_str, method)
 
 
 def alpha_ndcg_at_k(r_2d, k, method=1, alpha=0.5, include_dcg=False):
@@ -490,6 +549,12 @@ def alpha_ndcg_at_k(r_2d, k, method=1, alpha=0.5, include_dcg=False):
         num_trg_str, num_pred_str = r_2d.shape
         if k == 'M':
             k = num_pred_str
+        elif k == 'G':
+            #k = num_trg_str
+            if num_pred_str < num_trg_str:
+                k = num_trg_str
+            else:
+                k = num_pred_str
         # convert r to gain vector
         alpha_dcg = alpha_dcg_at_k(r_2d, k, method, alpha)
         # compute alpha_dcg_max
@@ -524,6 +589,13 @@ def alpha_ndcg_at_ks(r_2d, k_list, method=1, alpha=0.5, include_dcg=False):
         for k in k_list:
             if k == 'M':
                 k = num_pred_str
+            elif k == 'G':
+                #k = num_trg_str
+                if num_pred_str < num_trg_str:
+                    k = num_trg_str
+                else:
+                    k = num_pred_str
+
             if k > k_max:
                 k_max = k
         # convert r to gain vector
@@ -579,6 +651,13 @@ def average_precision(r, num_predictions, num_trgs):
 def average_precision_at_k(r, k, num_predictions, num_trgs):
     if k == 'M':
         k = num_predictions
+    elif k == 'G':
+        #k = num_trgs
+        if num_predictions < num_trgs:
+            k = num_trgs
+        else:
+            k = num_predictions
+
     if k < num_predictions:
         num_predictions = k
         r = r[:k]
@@ -593,6 +672,12 @@ def average_precision_at_ks(r, k_list, num_predictions, num_trgs):
     for k in k_list:
         if k == 'M':
             k = num_predictions
+        elif k == 'G':
+            #k = num_trgs
+            if num_predictions < num_trgs:
+                k = num_trgs
+            else:
+                k = num_predictions
         if k > k_max:
             k_max = k
     if num_predictions > k_max:
@@ -606,6 +691,12 @@ def average_precision_at_ks(r, k_list, num_predictions, num_trgs):
     for k in k_list:
         if k == 'M':
             k = num_predictions
+        elif k == 'G':
+            #k = num_trgs
+            if num_predictions < num_trgs:
+                k = num_trgs
+            else:
+                k = num_predictions
         return_indices.append( (k-1) if k <= num_predictions else (num_predictions-1) )
     return_indices = np.array(return_indices, dtype=int)
     return average_precision_array[return_indices]
@@ -614,7 +705,10 @@ def average_precision_at_ks(r, k_list, num_predictions, num_trgs):
 def find_v(f1_dict, num_samples, k_list, tag):
     marco_f1_scores = np.zeros(len(k_list))
     for i, topk in enumerate(k_list):
-        marco_f1_scores[i] = f1_dict['f1_score_sum@{}_{}'.format(topk, tag)] / num_samples
+        marco_avg_precision = f1_dict['precision_sum@{}_{}'.format(topk, tag)] / num_samples
+        marco_avg_recall = f1_dict['recall_sum@{}_{}'.format(topk, tag)] / num_samples
+        marco_f1_scores[i] = 2 * marco_avg_precision * marco_avg_recall / (marco_avg_precision + marco_avg_recall) if (marco_avg_precision + marco_avg_recall) > 0 else 0
+        # marco_f1_scores[i] = f1_dict['f1_score_sum@{}_{}'.format(topk, tag)] / num_samples
     # for debug
     print(marco_f1_scores)
     return k_list[np.argmax(marco_f1_scores)]
@@ -627,9 +721,10 @@ def update_f1_dict(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed, k_list, 
                                     type='exact', dimension=1)
     # Classification metrics
     precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks = \
-        compute_classification_metrics_at_ks(is_match, num_predictions, num_targets, k_list=k_list)
-    for topk, f1_k in zip(k_list, f1_ks):
-        f1_dict['f1_score_sum@{}_{}'.format(topk, tag)] += f1_k
+        compute_classification_metrics_at_ks(is_match, num_predictions, num_targets, k_list=k_list, meng_rui_precision=opt.meng_rui_precision)
+    for topk, precision_k, recall_k in zip(k_list, precision_ks, recall_ks):
+        f1_dict['precision_sum@{}_{}'.format(topk, tag)] += precision_k
+        f1_dict['recall_sum@{}_{}'.format(topk, tag)] += recall_k
     return f1_dict
 
 
@@ -643,10 +738,10 @@ def update_score_dict(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed, k_lis
                                                  pred_token_2dlist_stemmed, type='sub', dimension=2)
     # Classification metrics
     precision_ks, recall_ks, f1_ks, num_matches_ks, num_predictions_ks = \
-        compute_classification_metrics_at_ks(is_match, num_predictions, num_targets, k_list=k_list)
+        compute_classification_metrics_at_ks(is_match, num_predictions, num_targets, k_list=k_list, meng_rui_precision=opt.meng_rui_precision)
 
     # Ranking metrics
-    ndcg_ks, dcg_ks = ndcg_at_ks(is_match, k_list=k_list, method=1, include_dcg=True)
+    ndcg_ks, dcg_ks = ndcg_at_ks(is_match, k_list=k_list, num_trgs=num_targets, method=1, include_dcg=True)
     alpha_ndcg_ks, alpha_dcg_ks = alpha_ndcg_at_ks(is_match_substring_2d, k_list=k_list, method=1,
                                                    alpha=0.5, include_dcg=True)
     ap_ks = average_precision_at_ks(is_match, k_list=k_list,
@@ -736,6 +831,15 @@ def separate_present_absent_by_segmenter(keyphrase_token_2dlist, segmenter):
     return present_keyphrase_token2dlist, absent_keyphrase_token2dlist
 
 
+def process_input_ks(ks):
+    ks_list = []
+    for k in ks:
+        if k != 'M' and k != 'G':
+            k = int(k)
+        ks_list.append(k)
+    return ks_list
+
+
 def main(opt):
     src_file_path = opt.src_file_path
     trg_file_path = opt.trg_file_path
@@ -746,12 +850,19 @@ def main(opt):
 
     if opt.tune_f1_v:
         f1_dict = defaultdict(lambda: 0)
-        topk_dict = {'present': list(range(1, 26)), 'absent': list(range(1, 26)), 'all': list(range(1, 26))}
+        max_k = 20
+        topk_dict = {'present': list(range(1, max_k)), 'absent': list(range(1, max_k)), 'all': list(range(1, max_k))}
     else:
         score_dict = defaultdict(list)
-        topk_dict = {'present': [5, 10, 'M'], 'absent': [5, 10, 50, 'M'], 'all': [5, 10, 'M']}
+        all_ks = process_input_ks(opt.all_ks)
+        present_ks = process_input_ks(opt.present_ks)
+        absent_ks = process_input_ks(opt.absent_ks)
+        topk_dict = {'present': present_ks, 'absent': absent_ks, 'all': all_ks}
+        # topk_dict = {'present': [5, 10, 'M'], 'absent': [5, 10, 50, 'M'], 'all': [5, 10, 'M']}
 
     num_src = 0
+    num_src_with_present_keyphrases = 0
+    num_src_with_absent_keyphrases = 0
     num_unique_predictions = 0
     num_present_filtered_predictions = 0
     num_present_unique_targets = 0
@@ -778,7 +889,10 @@ def main(opt):
 
         # perform stemming
         stemmed_src_token_list = stem_word_list(src_token_list)
-        stemmed_trg_token_2dlist = stem_str_list(trg_token_2dlist)
+        if opt.target_already_stemmed:
+            stemmed_trg_token_2dlist = trg_token_2dlist
+        else:
+            stemmed_trg_token_2dlist = stem_str_list(trg_token_2dlist)
         stemmed_pred_token_2dlist = stem_str_list(pred_token_2dlist)
 
         # remove peos in predictions, then check if the model can successfuly separate present and absent keyphrases by segmenter
@@ -800,6 +914,7 @@ def main(opt):
         # Filter out duplicate, invalid, and extra one word predictions
         filtered_stemmed_pred_token_2dlist, num_duplicated_predictions = filter_prediction(opt.disable_valid_filter, opt.disable_extra_one_word_filter, stemmed_pred_token_2dlist)
         num_unique_predictions += (num_predictions - num_duplicated_predictions)
+
 
         # Remove duplicated targets
         unique_stemmed_trg_token_2dlist, num_duplicated_trg = find_unique_target(stemmed_trg_token_2dlist)
@@ -825,6 +940,10 @@ def main(opt):
         num_present_unique_targets += len(present_unique_stemmed_trg_token_2dlist)
         num_absent_filtered_predictions += len(absent_filtered_stemmed_pred_token_2dlist)
         num_absent_unique_targets += len(absent_unique_stemmed_trg_token_2dlist)
+        if len(present_unique_stemmed_trg_token_2dlist) > 0:
+            num_src_with_present_keyphrases += 1
+        if len(absent_unique_stemmed_trg_token_2dlist) > 0:
+            num_src_with_absent_keyphrases += 1
 
         if opt.tune_f1_v:
             # compute F1 score all
@@ -876,7 +995,7 @@ def main(opt):
         result_txt_str = ""
 
         # report global statistics
-        result_txt_str += ('Total #samples: %d\n' % num_src)
+        result_txt_str += ('Total #samples: %d\t # samples with present keyphrases: %d\t # samples with absent keyphrases: %d\n' % (num_src, num_src_with_present_keyphrases, num_src_with_absent_keyphrases))
         result_txt_str += ('Max. unique targets per src: %d\n' % (max_unique_targets))
         result_txt_str += ('Total #unique predictions: %d\n' % num_unique_predictions)
 
@@ -889,7 +1008,12 @@ def main(opt):
         result_list = result_list_all + result_list_present + result_list_absent
 
         # Write to files
-        results_txt_file = open(os.path.join(opt.exp_path, "results_log.txt"), "w")
+        # topk_dict = {'present': [5, 10, 'M'], 'absent': [5, 10, 50, 'M'], 'all': [5, 10, 'M']}
+        k_list = topk_dict['all'] + topk_dict['present'] + topk_dict['absent']
+        result_file_suffix = '_'.join([str(k) for k in k_list])
+        if opt.meng_rui_precision:
+            result_file_suffix += '_meng_rui_precision'
+        results_txt_file = open(os.path.join(opt.exp_path, "results_log_{}.txt".format(result_file_suffix)), "w")
         if opt.prediction_separated:
             result_txt_str += "===================================Separation====================================\n"
             result_txt_str += "Avg error fraction for identifying present keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_present / num_src)
@@ -898,7 +1022,7 @@ def main(opt):
         results_txt_file.write(result_txt_str)
         results_txt_file.close()
 
-        results_tsv_file = open(os.path.join(opt.exp_path, "results_log.tsv"), "w")
+        results_tsv_file = open(os.path.join(opt.exp_path, "results_log_{}.tsv".format(result_file_suffix)), "w")
         results_tsv_file.write('\t'.join(field_list) + '\n')
         results_tsv_file.write('\t'.join('%.5f' % result for result in result_list) + '\n')
         results_tsv_file.close()
@@ -943,8 +1067,7 @@ def report_classification_scores(score_dict, topk_list, present_tag):
             score_dict['precision@{}_{}'.format(topk, present_tag)])
         macro_avg_recall_k = sum(score_dict['recall@{}_{}'.format(topk, present_tag)]) / len(
             score_dict['recall@{}_{}'.format(topk, present_tag)])
-        macro_avg_f1_score_k = float(2 * macro_avg_precision_k * macro_avg_recall_k) / (
-                macro_avg_precision_k + macro_avg_recall_k)
+        macro_avg_f1_score_k = (2 * macro_avg_precision_k * macro_avg_recall_k) / (macro_avg_precision_k + macro_avg_recall_k) if (macro_avg_precision_k + macro_avg_recall_k) > 0 else 0.0
         output_str += ("Begin===============classification metrics {}@{}===============Begin\n".format(present_tag, topk))
         output_str += ("#target: {}, #predictions: {}, #corrects: {}\n".format(total_predictions_k, total_targets_k, total_num_matches_k))
         output_str += "Micro:\tP@{}={:.5}\tR@{}={:.5}\tF1@{}={:.5}\n".format(topk, micro_avg_precision_k, topk, micro_avg_recall_k, topk, micro_avg_f1_score_k)
