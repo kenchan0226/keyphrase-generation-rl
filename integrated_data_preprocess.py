@@ -108,6 +108,7 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_pa
     """
 
     extract_acronym_flag = False
+    acronym_tokens = None
 
     if keyphrase == "":
         return ""
@@ -122,8 +123,8 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_pa
                 #keyphrase_variations.append(get_tokens(acronym, fine_grad, use_corenlp))
                 acronym_tokens = get_tokens(acronym, fine_grad, use_corenlp)
                 extract_acronym_flag = True
-            else:
-                acronym_tokens = None
+            #else:
+            #    acronym_tokens = None
     # remove the parenthesis and insert the keyphrase as one of the variations
     keyphrase_filtered = re.sub(r'\(.*?\)', '', keyphrase).strip()
 
