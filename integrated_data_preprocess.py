@@ -119,8 +119,11 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_pa
         if len(match_list) > 0:
             acronym = match_list[-1]  # the last match should be an acronym
             if match_ending_parenthesis and len(acronym) > 1:
-                keyphrase_variations.append(get_tokens(acronym, fine_grad, use_corenlp))
+                #keyphrase_variations.append(get_tokens(acronym, fine_grad, use_corenlp))
+                acronym_tokens = get_tokens(acronym, fine_grad, use_corenlp)
                 extract_acronym_flag = True
+            else:
+                acronym_tokens = None
     # remove the parenthesis and insert the keyphrase as one of the variations
     keyphrase_filtered = re.sub(r'\(.*?\)', '', keyphrase).strip()
 
@@ -129,12 +132,15 @@ def find_variations(keyphrase, src_tokens, fine_grad, limit_num, match_ending_pa
         # If the keyphrase becomes empty after removing parenthesis, replace with the value inside the paraenthesis.
         keyphrase_filtered = acronym
         extract_acronym_flag = False
+        acronym_tokens = None
         #print("Keyphrase becomes empty after removing parenthesis")
         #print("From {} to {}.".format(keyphrase, keyphrase_filtered))
         #print(keyphrase)
         #exit()
 
     keyphrase_variations.append(get_tokens(keyphrase_filtered, fine_grad, use_corenlp))
+    if acronym_tokens is not None:
+        keyphrase_variations.append(acronym_tokens)
     # find variations from wikipedia, wiki_variations: a list of word list
     wiki_variations, num_matched_disambiguation, num_redirections_found = find_variations_from_wiki(keyphrase_filtered, src_tokens, fine_grad, use_corenlp, find_redirections)
     keyphrase_variations += wiki_variations
@@ -284,6 +290,16 @@ def get_tokens(text, fine_grad=True, use_corenlp=True):
     return tokens
 
 
+def remove_duplicate_from_str_list(str_list):
+    unique_str_list = []
+    str_set = set()
+    for a_str in str_list:
+        if a_str not in str_set:
+            str_set.add(a_str)
+            unique_str_list.append(a_str)
+    return unique_str_list
+
+
 def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False, limit_num=True, fine_grad=True, sort_keyphrases=False, match_ending_parenthesis=False, use_corenlp=True, separate_present_absent=False, find_redirections=False):
     if variations and sort_keyphrases:
         raise ValueError("You cannot use sort_keyphrases when you need to find the variations of each keyphrase")
@@ -338,6 +354,9 @@ def process_keyphrase(keyword_str, src_tokens, keyphrase_stat, variations=False,
 
     if sort_keyphrases:
         keyphrase_list = sort_keyphrases_by_their_order_of_occurence(keyphrase_list, src_tokens, keyphrase_token_2dlist, separate_present_absent)
+
+    # remove duplicate keyphrases
+    keyphrase_list = remove_duplicate_from_str_list(keyphrase_list)
 
     # a list of keyphrase str
     return keyphrase_list
