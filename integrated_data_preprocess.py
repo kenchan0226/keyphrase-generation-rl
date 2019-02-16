@@ -195,7 +195,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
                 retry_flag = False
         except wikipedia.exceptions.PageError as e:
             return [], num_matched_disambiguation, num_redirections_found
-        except wkipedia.exceptions.HTTPTimeoutError as e:
+        except wikipedia.exceptions.HTTPTimeoutError as e:
             if retry_i == max_retry - 1:
                 raise ValueError("Retry for {} times, still cannot call wikipedia API".format(max_retry))
             retry_flag = True
