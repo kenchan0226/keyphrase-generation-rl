@@ -166,56 +166,70 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
     num_matched_disambiguation = 0
     num_redirections_found = 0
 
-    try:
-        entity = wikipedia.page(title=keyphrase, auto_suggest=False, redirect=True)
-        entity_title = entity.title  # without lowercase
-        #entity_title_tokens = get_tokens(entity.title.lower(), fine_grad)  # lowercase and tokenize
-        stage = 1
+    max_retry = 100
+    retry_flag = False
+    for retry_i in range(max_retry):
+        try:
+            entity = wikipedia.page(title=keyphrase, auto_suggest=False, redirect=True)
+            entity_title = entity.title  # without lowercase
+            #entity_title_tokens = get_tokens(entity.title.lower(), fine_grad)  # lowercase and tokenize
+            stage = 1
+            retry_flag = False
 
-    except wikipedia.exceptions.DisambiguationError as e:
-        stage = 2
-        possible_titles = e.options  # fetch all the possible entity titles, a list of str, without lowercase
-        # lowercase and then tokenize possible titles, ignore it if a possible title is an empty string
-        possible_titles_tokenized = [get_tokens(title.lower(), fine_grad, use_corenlp) for title in possible_titles if title.strip()!= '']  # a list of word lists
-        # stem possible titles
-        possible_titles_stemmed = string_helper.stem_str_list(possible_titles_tokenized)  # a list of word lists
-        # stem src
-        src_stemmed = string_helper.stem_word_list(src_tokens)  # word list
-        is_present, not_duplicate = check_present_and_duplicate_keyphrases(src_stemmed, possible_titles_stemmed)
-        possible_titles_that_present_in_src = [title for title, is_keep in zip(possible_titles, is_present) if is_keep]
-        num_matched_disambiguation = len(possible_titles_that_present_in_src)
-        if num_matched_disambiguation == 0:
+        except wikipedia.exceptions.DisambiguationError as e:
+            stage = 2
+            possible_titles = e.options  # fetch all the possible entity titles, a list of str, without lowercase
+            # lowercase and then tokenize possible titles, ignore it if a possible title is an empty string
+            possible_titles_tokenized = [get_tokens(title.lower(), fine_grad, use_corenlp) for title in possible_titles if title.strip()!= '']  # a list of word lists
+            # stem possible titles
+            possible_titles_stemmed = string_helper.stem_str_list(possible_titles_tokenized)  # a list of word lists
+            # stem src
+            src_stemmed = string_helper.stem_word_list(src_tokens)  # word list
+            is_present, not_duplicate = check_present_and_duplicate_keyphrases(src_stemmed, possible_titles_stemmed)
+            possible_titles_that_present_in_src = [title for title, is_keep in zip(possible_titles, is_present) if is_keep]
+            num_matched_disambiguation = len(possible_titles_that_present_in_src)
+            if num_matched_disambiguation == 0:
+                return [], num_matched_disambiguation, num_redirections_found
+            else:
+                entity_title = possible_titles_that_present_in_src[0]
+                retry_flag = False
+        except wikipedia.exceptions.PageError as e:
             return [], num_matched_disambiguation, num_redirections_found
-        else:
-            entity_title = possible_titles_that_present_in_src[0]
-
-    except wikipedia.exceptions.PageError as e:
-        return [], num_matched_disambiguation, num_redirections_found
-    except wikipedia.exceptions.WikipediaException as e:
-        print(keyphrase)
-        print(e)
-        exit()
-    except KeyError as e:
-        return [], num_matched_disambiguation, num_redirections_found
-        """
-        if e.args[0] == 'pages':
-            return []
-        else:
+        except wkipedia.exceptions.HTTPTimeoutError as e:
+            if retry_i == max_retry - 1:
+                raise ValueError("Retry for {} times, still cannot call wikipedia API".format(max_retry))
+            retry_flag = True
+            sleep(10)
+        except wikipedia.exceptions.WikipediaException as e:
+            print(keyphrase)
             print(e)
+            print("base exceptions")
             exit()
-        """
-    except Exception as e:  # catch *all* exceptions
-        print(keyphrase)
-        print(e)
-        exit()
+        except KeyError as e:
+            return [], num_matched_disambiguation, num_redirections_found
+            """
+            if e.args[0] == 'pages':
+                return []
+            else:
+                print(e)
+                exit()
+            """
+        except Exception as e:  # catch *all* exceptions
+            print(keyphrase)
+            print(e)
+            print("all exceptions")
+            exit()
 
-    if entity_title == "":
-        print("Entity title is empty!")
-        print(keyphrase)
-        if stage == 2:
-            print(possible_titles)
-            print(possible_titles_that_present_in_src)
-        exit()
+        if entity_title == "":
+            print("Entity title is empty!")
+            print(keyphrase)
+            if stage == 2:
+                print(possible_titles)
+                print(possible_titles_that_present_in_src)
+            exit()
+
+        if not retry_flag:
+            break
 
     entity_title_tokens = get_tokens(entity_title.lower(), fine_grad, use_corenlp)  # lowercase and tokenize
     wiki_variations.append(entity_title_tokens)
