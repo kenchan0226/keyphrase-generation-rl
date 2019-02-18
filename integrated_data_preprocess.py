@@ -199,7 +199,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
             if retry_i == max_retry - 1:
                 raise ValueError("HTTP time out for {} times, still cannot call wikipedia API".format(max_retry))
             retry_flag = True
-            sleep(10)
+            time.sleep(10)
         except wikipedia.exceptions.WikipediaException as e:
             print(keyphrase)
             print(e)
@@ -207,7 +207,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
             if retry_i == max_retry - 1:
                 raise ValueError("Retry for {} times, still cannot call wikipedia API".format(max_retry))
             retry_flag = True
-            sleep(10)
+            time.sleep(10)
         except KeyError as e:
             return [], num_matched_disambiguation, num_redirections_found
             """
@@ -224,7 +224,7 @@ def find_variations_from_wiki(keyphrase, src_tokens, fine_grad, use_corenlp, fin
             if retry_i == max_retry - 1:
                 raise ValueError("Retry for {} times, still cannot call wikipedia API".format(max_retry))
             retry_flag = True
-            sleep(10)
+            time.sleep(10)
 
         if entity_title == "":
             print("Entity title is empty!")
