@@ -33,6 +33,16 @@ def prediction_to_sentence(prediction, idx2word, vocab_size, oov, eos_idx, unk_i
     return sentence
 
 
+def stem_str_2d_list(str_2dlist):
+    # stem every word in a list of word list
+    # str_list is a list of word list
+    stemmed_str_2dlist = []
+    for str_list in str_2dlist:
+        stemmed_str_list = [stem_word_list(word_list) for word_list in str_list]
+        stemmed_str_2dlist.append(stemmed_str_list)
+    return stemmed_str_2dlist
+
+
 def stem_str_list(str_list):
     # stem every word in a list of word list
     # str_list is a list of word list

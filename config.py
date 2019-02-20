@@ -497,19 +497,19 @@ def predict_opts(parser):
 
 
 def post_predict_opts(parser):
-    parser.add_argument('-pred_file_path', type=str,
+    parser.add_argument('-pred_file_path', type=str, required=True,
                         help="Path of the prediction file.")
-    parser.add_argument('-src_file_path', type=str,
+    parser.add_argument('-src_file_path', type=str, required=True,
                         help="Path of the source text file.")
     parser.add_argument('-trg_file_path', type=str,
                         help="Path of the target text file.")
     parser.add_argument('-export_filtered_pred', action="store_true",
                         help="Export the filtered predictions to a file or not")
-    parser.add_argument('-filtered_pred_path', type=str,
+    parser.add_argument('-filtered_pred_path', type=str, default="",
                         help="Path of the folder for storing the filtered prediction")
     parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
-    parser.add_argument('-exp_path', type=str,
+    parser.add_argument('-exp_path', type=str, default="",
                         help="Path of experiment log/plot.")
     parser.add_argument('-disable_extra_one_word_filter', action="store_true",
                         help="If False, it will only keep the first one-word prediction")
@@ -541,8 +541,8 @@ def post_predict_opts(parser):
                         help='If it is true, it will not stem the target keyphrases.')
     parser.add_argument('-meng_rui_precision', action="store_true", default=False,
                         help='If it is true, when computing precision, it will divided by the number pf predictions, instead of divided by k.')
-
-
+    parser.add_argument('-use_name_variations', action="store_true", default=False,
+                        help='Match the ground-truth with name variations.')
 
 def interactive_predict_opts(parser):
     parser.add_argument('-model', required=True,
