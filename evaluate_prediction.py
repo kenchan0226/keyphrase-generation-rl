@@ -6,6 +6,7 @@ from collections import defaultdict
 import os
 import logging
 import pykp.io
+import pickle
 
 
 def check_valid_keyphrases(str_list):
@@ -158,7 +159,7 @@ def separate_present_absent_by_source_with_variations(src_token_list, keyphrase_
         present_flag = False
         absent_flag = False
         # iterate every variation of a keyphrase
-        for keyphrase_token_list in keyphrase_variation_token_2dlist:
+        for variation_idx, keyphrase_token_list in enumerate(keyphrase_variation_token_2dlist):
             joined_keyphrase_str = ' '.join(keyphrase_token_list)
             if joined_keyphrase_str.strip() == "":  # if the keyphrase is an empty string
                 absent_flag = True
@@ -1301,6 +1302,12 @@ def main(opt):
         results_tsv_file.write('\t'.join(field_list) + '\n')
         results_tsv_file.write('\t'.join('%.5f' % result for result in result_list) + '\n')
         results_tsv_file.close()
+
+        # save score dict for future use
+        score_dict_pickle = open(os.path.join(opt.exp_path, "score_dict_{}.pickle".format(result_file_suffix)), "wb")
+        pickle.dump(score_dict, score_dict_pickle)
+        score_dict_pickle.close()
+
     return
 
 
