@@ -870,6 +870,9 @@ def update_score_dict(trg_token_2dlist_stemmed, pred_token_2dlist_stemmed, k_lis
         score_dict['AP@{}_{}'.format(topk, tag)].append(ap_k)
         score_dict['NDCG@{}_{}'.format(topk, tag)].append(ndcg_k)
         score_dict['AlphaNDCG@{}_{}'.format(topk, tag)].append(alpha_ndcg_k)
+
+    score_dict['num_targets_{}'.format(tag)].append(num_targets)
+    score_dict['num_predictions_{}'.format(tag)].append(num_predictions)
     return score_dict
 
 
@@ -1295,6 +1298,22 @@ def main(opt):
             result_txt_str += "Avg error fraction for identifying present keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_present / total_num_src)
             result_txt_str += "Avg error fraction for identifying absent keyphrases: {:.5}\n".format(sum_incorrect_fraction_for_identifying_absent / total_num_src)
 
+        # Report MAE on lengths
+        result_txt_str += "===================================MAE stat====================================\n"
+
+        num_targets_present_array = np.array(score_dict['num_targets_present'])
+        num_predictions_present_array = np.array(score_dict['num_predictions_present'])
+        num_targets_absent_array = np.array(score_dict['num_targets_absent'])
+        num_predictions_absent_array = np.array(score_dict['num_predictions_absent'])
+
+        all_mae = mae(num_targets_present_array+num_targets_absent_array, num_predictions_present_array+num_predictions_absent_array)
+        present_mae = mae(num_targets_present_array, num_predictions_present_array)
+        absent_mae = mae(num_targets_absent_array, num_predictions_absent_array)
+
+        result_txt_str += "MAE on keyphrase numbers (all): {:.5}\n".format(all_mae)
+        result_txt_str += "MAE on keyphrase numbers (present): {:.5}\n".format(present_mae)
+        result_txt_str += "MAE on keyphrase numbers (absent): {:.5}\n".format(absent_mae)
+
         results_txt_file.write(result_txt_str)
         results_txt_file.close()
 
@@ -1309,6 +1328,14 @@ def main(opt):
         score_dict_pickle.close()
 
     return
+
+
+def rmse(a, b):
+    return np.sqrt(((a - b) ** 2).mean())
+
+
+def mae(a, b):
+    return (np.abs(a - b)).mean()
 
 
 def report_stat_and_scores(total_num_filtered_predictions, num_unique_trgs, total_num_src, score_dict, topk_list, present_tag, use_name_variations=False):
