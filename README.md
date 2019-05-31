@@ -1,6 +1,17 @@
-# Deep Keypharse Generation with one-to-many
+# Neural Keyphrase Generation via Reinforcement Learning with Adaptive Rewards
+This repository contains the code for our ACL 19 paper "Neural Keyphrase Generation via Reinforcement Learning with Adaptive Rewards".
 Our implementation is built on the source code from [seq2seq-keyphrase-pytorch](https://github.com/memray/seq2seq-keyphrase-pytorch), which is the official implementation of the Deep Keyphrase Generation paper \[Meng et al. 2017\].
 Some codes are adapted from this [repository](https://github.com/atulkum/pointer_summarizer). The code for beam search algorithm is mainly adapted from [OpenNMT-py](https://github.com/OpenNMT/OpenNMT-py).
+
+If you use this code, please cite our paper:
+```
+@inproceedings{conf/acl/chan19keyphraseRL,
+  title={Neural Keyphrase Generation via Reinforcement Learning with Adaptive Rewards},
+  author={Hou Pong Chan, Wang Chen, Lu Wang, and Irwin King},
+  booktitle={Proceedings of ACL},
+  year={2019}
+}
+```
 
 ## Dependencies
 * python 3.5+
@@ -152,13 +163,6 @@ The options for interactive_predict.py:
 -replace_unk: a flag for replacing every <unk> token with the token that received the highest attention score.
 ```
 
-## TODO
-- [x] Beam Search
-- [x] Early Stopping of training
-- [x] Evaluation
-- [x] Adjust the code and parameters of the baseline until we get competitive results
-- [x] Training with RL
-- [ ] Tune the RL algorithms
 
 ## References
 Abigail See, Peter J. Liu, Christopher D. Manning:
