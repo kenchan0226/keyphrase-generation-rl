@@ -8,7 +8,7 @@ If you use this code, please cite our paper:
 ```
 @inproceedings{conf/acl/chan19keyphraseRL,
   title={Neural Keyphrase Generation via Reinforcement Learning with Adaptive Rewards},
-  author={Hou Pong Chan, Wang Chen, Lu Wang, and Irwin King},
+  author={Hou Pong Chan and Wang Chen and Lu Wang and Irwin King},
   booktitle={Proceedings of ACL},
   year={2019}
 }
