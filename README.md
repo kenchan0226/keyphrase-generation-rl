@@ -37,7 +37,8 @@ The `cross_domain_sorted` directory contains the test only datasets (inspec, kra
 * In source files, the title and the main body are separated by an `<eos>` token
 * in target files, the keyphrases are separated by an `;` character. There is no space before and after the colon character, e.g., `keyphrase one;keyphrase two`. For the training of reinforced model, `<peos>` is used to mark the end of present ground-truth keyphrases, e.g., `present keyphrase one;present keyphrase two;<peos>;absent keyprhase one;absent keyphrase two`. 
 
-## Train a baseline model
+## Training
+### Train a baseline model
 Please download and unzip the datasets in the `./data` directory.
 
 1. Numericalize data. 
@@ -58,7 +59,7 @@ To use the TG-Net model, you need to copy the directory `data/kp20k_sorted` to `
   * catSeqCorr: `python3 train.py -data data/kp20k_sorted/ -vocab data/kp20k_sorted/ -exp_path exp/%s.%s -exp kp20k -epochs 20 -copy_attention -coverage_attn -review_attn -train_ml -one2many -one2many_mode 1 -batch_size 12 -seed 9527`
   * catSeqTG: `python3 train.py -data data/kp20k_tg_sorted/ -vocab data/kp20k_tg_sorted/ -exp_path exp/%s.%s -exp kp20k -epochs 20 -copy_attention -title_guided -train_ml -one2many -one2many_mode 1 -batch_size 12 -batch_workers 3 -seed 9527`
 
-## Train a reinforced model
+### Train a reinforced model
 Different from the baseline models, we use an additional token `<peos>` to mark the end of present keyphrases. See Section 3.2 of our paper. 
 
 1. Numericalize data. 
@@ -81,7 +82,7 @@ To use the TG-Net model, you need to copy the directory `data/kp20k_separated` t
   * catSeqTG-2RF1: `python3 train.py -data data/kp20k_tg_separated/ -vocab data/kp20k_tg_separated/ -exp_path exp/%s.%s -exp kp20k -epochs 20 -copy_attention -title_guided -train_rl -one2many -one2many_mode 1 -batch_size 32 -separate_present_absent -pretrained_model [path_to_ml_pretrained_model] -max_length 60 -baseline self -reward_type 7 -replace_unk -topk G -batch_workers 3 -seed 9527`
 
 
-## Decode from pretrained model
+## Decode from a pretrained model
 Following Yuan et al. 2018, we use greedy search to decode the keyphrases from a pre-trained model, but you increase the beam size by specifying the beam_size option.
   * catSeq on inspec dataset: `python3 interactive_predict.py -vocab data/kp20k_sorted/ -src_file data/cross_domain_sorted/word_inspec_testing_context.txt -pred_path pred/%s.%s -copy_attention -one2many -one2many_mode 1 -model [path_to_model] -max_length 60 -remove_title_eos -n_best 1 -max_eos_per_output_seq 1 -beam_size 1 -batch_size 20 -replace_unk`
   * catSeq-2RF1 on inspec dataset: `python3 interactive_predict.py -vocab data/kp20k_separated/ -src_file data/cross_domain_separated/word_inspec_testing_context.txt -pred_path pred/%s.%s -copy_attention -one2many -one2many_mode 1 -model [path_to_model] -max_length 60 -remove_title_eos -n_best 1 -max_eos_per_output_seq 1 -beam_size 1 -batch_size 20 -replace_unk -separate_present_absent`
