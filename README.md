@@ -1,5 +1,5 @@
 # Keyphrase Generation via Reinforcement Learning
-This repository contains the code for our ACL 19 paper "Neural Keyphrase Generation via Reinforcement Learning with Adaptive Rewards".
+This repository contains the code for our ACL 19 paper "[Neural Keyphrase Generation via Reinforcement Learning with Adaptive Rewards](https://arxiv.org/abs/1906.04106)".
 
 Our implementation is built on the source code from [seq2seq-keyphrase-pytorch](https://github.com/memray/seq2seq-keyphrase-pytorch).
 Some codes are adapted from this [repository](https://github.com/atulkum/pointer_summarizer). The code for beam search is mainly adapted from [OpenNMT-py](https://github.com/OpenNMT/OpenNMT-py).
