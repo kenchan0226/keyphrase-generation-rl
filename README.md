@@ -19,7 +19,7 @@ If you use this code, please cite our paper:
 * pytorch 0.4
 
 ## Dataset
-The datasets can be downloaded from [here](https://drive.google.com/open?id=1mkDOzfSXNxcItriNNrrGV-bVv25CDRJM), which are the tokenized version of the datasets provided by [Rui Meng](https://github.com/memray/seq2seq-keyphrase). 
+The datasets can be downloaded from [here](https://drive.google.com/open?id=1DbXV1mZXm_o9bgfwPV9PV0ZPcNo1cnLp), which are the tokenized version of the datasets provided by [Rui Meng](https://github.com/memray/seq2seq-keyphrase). 
 Please unzip the files to the `./data` directory. The `kp20k_sorted` directory contains the kp20k dataset, it consists of three pairs of source-target files, `train_src.txt, train_trg.txt, valid_src.txt, valid_trg.txt, test_src.txt`.
 We removed the duplicated documents in the KP20k training set according to the instructions in Rui Meng's Github. 
 For each document, we sort all the present keyphrase labels according to their order of the first occurrence in the document. The absent keyphrase labels are then appended at the end of present keyphrase labels. 
