@@ -108,6 +108,9 @@ class RNNDecoder(nn.Module):
             assert goal_vector is not None
             rnn_input = torch.cat([rnn_input, goal_vector], dim=2)  # [1, batch_size, embed_size+goal_vector_size]
 
+        if self.num_layers > 1:
+            h = h.contiguous()
+
         _, h_next = self.rnn(rnn_input, h)
 
         assert h_next.size() == torch.Size([self.num_layers, batch_size, self.hidden_size])
